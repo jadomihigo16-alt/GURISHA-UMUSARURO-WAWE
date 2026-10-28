@@ -1,0 +1,212 @@
+/* =========================
+   DASHBOARD CENTER
+========================= */
+
+.dashboard {
+  min-height: 100vh;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  text-align: center;
+
+  padding: 40px 25px;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(240, 252, 243, 0.96),
+      rgba(220, 243, 226, 0.90)
+    );
+}
+
+.dashboard h1 {
+  margin: 0 0 8px;
+  font-size: 42px;
+  font-weight: 900;
+}
+
+.dashboard > p {
+  margin: 0 0 30px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* CARDS */
+.dashboard .cards {
+  width: 100%;
+  max-width: 1050px;
+
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+
+  gap: 22px;
+
+  margin: 0 auto 30px;
+}
+
+.dashboard .card {
+  padding: 28px 24px;
+
+  background: rgba(255, 255, 255, 0.94);
+
+  border-radius: 20px;
+
+  box-shadow:
+    0 12px 30px rgba(23, 107, 58, 0.12);
+
+  text-align: center;
+}
+
+.dashboard .card h2 {
+  margin-top: 0;
+  font-size: 21px;
+}
+
+.dashboard .card p {
+  line-height: 1.6;
+  font-weight: 600;
+}
+
+.dashboard .card button {
+  margin-top: 10px;
+  padding: 12px 22px;
+
+  border: none;
+  border-radius: 10px;
+
+  background: #176b3a;
+  color: white !important;
+
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* BACK BUTTON */
+.dashboard .back {
+  padding: 13px 25px;
+
+  border: none;
+  border-radius: 12px;
+
+  background: #176b3a;
+  color: white !important;
+
+  font-weight: 900;
+
+  cursor: pointer;
+}
+
+/* MOBILE */
+@media (max-width: 700px) {
+  .dashboard {
+    padding: 30px 18px;
+  }
+
+  .dashboard h1 {
+    font-size: 32px;
+  }
+
+  .dashboard .cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* =========================
+   HOME - PROFESSIONAL
+========================= */
+
+.home {
+  min-height: 100vh;
+  width: 100%;
+
+  display: flex;
+  flex-direction: column;
+
+  justify-content: center;
+  align-items: center;
+
+  text-align: center;
+
+  background:
+    linear-gradient(
+      135deg,
+      #f4fbf5,
+      #e8f5ec
+    );
+}
+
+.home .brand,
+.home .hero,
+.home .roles {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+
+  text-align: center;
+}
+
+.home .brand h1,
+.home .brand p,
+.home .hero h2,
+.home .hero .description {
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ROLE BUTTONS */
+
+.home .roles {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  gap: 20px;
+}
+
+.home .roles button {
+  text-align: center;
+
+  border: none;
+  border-radius: 16px;
+
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.10);
+
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.home .roles button:hover {
+  transform: translateY(-4px);
+
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.16);
+}
+
+/* ROLE COLORS */
+
+.home .roles .farmer {
+  background: #2e7d32;
+  color: white;
+}
+
+.home .roles .livestock {
+  background: #b36b2c;
+  color: white;
+}
+
+.home .roles .agent {
+  background: #1976d2;
+  color: white;
+}
+
+.home .roles .buyer {
+  background: #7b3fb2;
+  color: white;
+}
