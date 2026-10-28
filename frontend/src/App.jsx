@@ -231,7 +231,7 @@ useEffect(() => {
   const loadProducts = async () => {
     try {
       const response = await fetch(
-        "http://localhost:5001/api/products"
+        "https://gurisha-umusaruro-wawe.onrender.com/api/products"
       );
 
       const data = await response.json();
@@ -794,7 +794,7 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
     };
 
     const response = await fetch(
-      "http://localhost:5001/api/products",
+      "https://gurisha-umusaruro-wawe.onrender.com/api/products",
       {
         method: "POST",
         headers: {
@@ -1027,7 +1027,7 @@ const handleVerifyProduct = (productId) => {
 
   try {
     const response = await fetch(
-      "http://localhost:5001/api/orders",
+      "https://gurisha-umusaruro-wawe.onrender.com/api/orders",
       {
         method: "POST",
         headers: {
@@ -1724,7 +1724,7 @@ const handleApproveOrder = (orderId) => {
   const handleStartDelivery = async (orderId) => {
   try {
     const response = await fetch(
-      `http://localhost:5001/api/orders/${orderId}/status`,
+      `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
       {
         method: "PATCH",
         headers: {
@@ -1779,7 +1779,7 @@ const handleApproveOrder = (orderId) => {
   const handleSendDelivery = async (orderId) => {
   try {
     const response = await fetch(
-      `http://localhost:5001/api/orders/${orderId}/status`,
+      `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
       {
         method: "PATCH",
         headers: {
@@ -1834,7 +1834,7 @@ const handleApproveOrder = (orderId) => {
   const handleDeliveryArrived = async (orderId) => {
     try {
       const response = await fetch(
-        `http://localhost:5001/api/orders/${orderId}/status`,
+        `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
         {
           method: "PATCH",
           headers: {
@@ -1889,7 +1889,7 @@ const handleApproveOrder = (orderId) => {
     const handleBuyerReceivedProduct = async (orderId) => {
     try {
       const response = await fetch(
-        `http://localhost:5001/api/orders/${orderId}/status`,
+        `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
         {
           method: "PATCH",
           headers: {
@@ -4743,6 +4743,7 @@ const pendingProducts =
 }
 
 export default App;
+
 
 
 
