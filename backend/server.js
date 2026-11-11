@@ -1,10 +1,12 @@
-﻿
+
 const express = require("express");
+const jwt = require("jsonwebtoken");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const { Pool } = require("pg");
 const path = require("path");
 const multer = require("multer");
+const createAuthRouter = require("./auth.routes");
 dotenv.config();
 
 const app = express();
@@ -45,6 +47,44 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
   port: Number(process.env.DB_PORT || 5432),
 });
+app.use("/api", createAuthRouter(pool));
+
+// JWT AUTHENTICATION FOR ORDER STATUS
+function authenticateOrderUser(req, res, next) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ")
+    ? header.slice(7)
+    : null;
+
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: "BANZA WINJIRE MURI KONTI YAWE."
+    });
+  }
+
+  try {
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({
+      success: false,
+      message: "TOKEN NTIKIRIYO CYANGWA YARANGIYE IGIHE."
+    });
+  }
+}
+const soldSchemaReady = pool.query(`
+  ALTER TABLE products
+  ADD COLUMN IF NOT EXISTS is_sold BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS sold_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS offered_price NUMERIC,
+  ADD COLUMN IF NOT EXISTS offer_status TEXT NOT NULL DEFAULT 'NONE',
+  ADD COLUMN IF NOT EXISTS offer_created_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS offer_response_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS verification_reason TEXT,
+  ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS resale_price NUMERIC
+`);
 
 // TEST
 app.get("/", (req, res) => {
@@ -56,14 +96,6 @@ app.get("/", (req, res) => {
 // DATABASE HEALTH
 app.get("/api/health", async (req, res) => {
   try {
-    const productResult = await pool.query(
-      `SELECT farmer_name, farmer_phone FROM products WHERE id = $1 LIMIT 1`,
-      [productId]
-    );
-    const productFarmer = productResult.rows[0];
-    const finalFarmerName = farmerName || productFarmer?.farmer_name || null;
-    const finalFarmerPhone = farmerPhone || productFarmer?.farmer_phone || null;
-
     const result = await pool.query("SELECT NOW() AS now");
 
     res.json({
@@ -77,6 +109,291 @@ app.get("/api/health", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "DATABASE NTABWO YAHUJWE NA BACKEND",
+    });
+  }
+});
+
+
+// MARK PRODUCT AS SOLD
+app.post("/api/products/:id/sold", async (req, res) => {
+  try {
+    await soldSchemaReady;
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ success: false, message: "ID si yo." });
+    }
+
+    const result = await pool.query(`
+      UPDATE products
+      SET is_sold = TRUE, sold_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `, [id]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Umusaruro ntiwabonetse." });
+    }
+
+    res.json({ success: true, product: result.rows[0] });
+  } catch (error) {
+    console.error("KUGARAGAZA KO WAGURISHIJWE:", error);
+    res.status(500).json({ success: false, message: "Ntibyashobotse." });
+  }
+});
+// INTERMEDIARY MAKES A PRICE OFFER
+app.post("/api/products/:id/offer", async (req, res) => {
+  try {
+    await soldSchemaReady;
+
+    const id = Number(req.params.id);
+    const offeredPrice = Number(req.body.offeredPrice);
+
+    if (!Number.isInteger(id) || id <= 0 || !Number.isFinite(offeredPrice) || offeredPrice <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ID cyangwa igiciro si byo."
+      });
+    }
+
+    const result = await pool.query(`
+      UPDATE products
+      SET offered_price = $1,
+          offer_status = 'PENDING',
+          offer_created_at = NOW(),
+          offer_response_at = NULL
+      WHERE id = $2
+        AND is_sold = FALSE
+      RETURNING *
+    `, [offeredPrice, id]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Umusaruro ntiwabonetse cyangwa waragurishijwe."
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "IGICIRO CYOHEREJWE KU MUHINZI.",
+      product: result.rows[0]
+    });
+  } catch (error) {
+    console.error("PRICE OFFER ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "KOHEREZA IGICIRO BYANZE."
+    });
+  }
+});
+
+// FARMER ACCEPTS OR REJECTS THE OFFER
+app.post("/api/products/:id/offer-response", async (req, res) => {
+  try {
+    await soldSchemaReady;
+
+    const id = Number(req.params.id);
+    const response = String(req.body.response || "").trim().toUpperCase();
+
+    if (!Number.isInteger(id) || id <= 0 ||
+        !["ACCEPTED", "REJECTED"].includes(response)) {
+      return res.status(400).json({
+        success: false,
+        message: "Igisubizo cyangwa ID si byo."
+      });
+    }
+
+    const result = await pool.query(`
+      UPDATE products
+      SET offer_status = $1,
+          offer_response_at = NOW()
+      WHERE id = $2
+        AND offered_price IS NOT NULL
+        AND offer_status = 'PENDING'
+        AND is_sold = FALSE
+      RETURNING *
+    `, [response, id]);
+
+    if (result.rowCount === 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Nta giciro gitegereje igisubizo kuri uyu musaruro."
+      });
+    }
+
+    res.json({
+      success: true,
+      message: response === "ACCEPTED"
+        ? "UMUHINZI YEMEYE IGICIRO."
+        : "UMUHINZI YANZE IGICIRO.",
+      product: result.rows[0]
+    });
+  } catch (error) {
+    console.error("PRICE OFFER RESPONSE ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "KUBIKA IGISUBIZO BYANZE."
+    });
+  }
+});
+// VERIFY PRODUCT
+app.post("/api/products/:id/verify", async (req, res) => {
+  try {
+    await soldSchemaReady;
+
+    const id = Number(req.params.id);
+    const reason = String(req.body.reason || "").trim();
+
+    if (!Number.isInteger(id) || id <= 0 || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "ID cyangwa impamvu si byo."
+      });
+    }
+
+    const result = await pool.query(`
+      UPDATE products
+      SET status = 'WAGENZUWE - NTABWO WEMEJWE',
+          verification_reason = $1,
+          verified_at = NOW()
+      WHERE id = $2
+        AND is_sold = FALSE
+      RETURNING *
+    `, [reason, id]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Umusaruro ntiwabonetse cyangwa waragurishijwe."
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "UMUSARURO WAGENZUWE.",
+      product: result.rows[0]
+    });
+  } catch (error) {
+    console.error("VERIFY PRODUCT ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "KUGENZURA UMUSARURO BYANZE."
+    });
+  }
+});
+// APPROVE PRODUCT AND SET INTERMEDIARY RESALE PRICE
+app.post("/api/products/:id/approve", async (req, res) => {
+  try {
+    await soldSchemaReady;
+
+    const id = Number(req.params.id);
+    const resalePrice = Number(
+      String(req.body.resalePrice ?? "").replace(",", ".")
+    );
+
+    if (!Number.isInteger(id) || id <= 0 ||
+        !Number.isFinite(resalePrice) || resalePrice <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ID cyangwa igiciro cyo kugurishaho si byo."
+      });
+    }
+
+    const result = await pool.query(`
+      UPDATE products
+      SET resale_price = $1,
+          status = 'WEMEJWE'
+      WHERE id = $2
+        AND status = 'WAGENZUWE - NTABWO WEMEJWE'
+        AND offer_status = 'ACCEPTED'
+        AND offered_price IS NOT NULL
+        AND is_sold = FALSE
+      RETURNING *
+    `, [resalePrice, id]);
+
+    if (result.rowCount === 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Umusaruro ugomba kuba wagenzuwe, umuhinzi akaba yemeye igiciro, kandi utaragurishwa."
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "UMUSARURO WEMEJWE KANDI IGICIRO CYO KUGURISHA CYABITSWE.",
+      product: result.rows[0]
+    });
+  } catch (error) {
+    console.error("APPROVE PRODUCT ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "KWEMEZA UMUSARURO BYANZE."
+    });
+  }
+});
+
+// UMUHINZI ABONA UMUSARURO WE GUSA
+app.get("/api/products/mine", authenticateOrderUser, async (req, res) => {
+  try {
+    if (!["UMUHINZI", "UMWOROZI"].includes(req.user?.role)) {
+      return res.status(403).json({
+        success: false,
+        message: "IKI GIKORWA CYEMEREWE UMUHINZI CYANGWA UMWOROZI."
+      });
+    }
+
+    const farmerId = Number(req.user?.farmer_id);
+
+    if (!Number.isInteger(farmerId) || farmerId <= 0) {
+      return res.status(403).json({
+        success: false,
+        message: "KONTI YAWE NTIHUJE N'UMUHINZI."
+      });
+    }
+
+    const result = await pool.query(
+      "SELECT * FROM products WHERE farmer_id = $1 ORDER BY id DESC",
+      [farmerId]
+    );
+
+    return res.json({
+      success: true,
+      products: result.rows
+    });
+  } catch (error) {
+    console.error("GET MY PRODUCTS ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "KUBONA UMUSARURO WANJYE BYANZE."
+    });
+  }
+});
+
+
+// UMUGUZI ABONA UMUSARURO WEMEJWE GUSA
+app.get("/api/products/approved", async (req, res) => {
+  try {
+    await soldSchemaReady;
+
+    const result = await pool.query(`
+      SELECT *
+      FROM products
+      WHERE status = 'WEMEJWE'
+        AND COALESCE(is_sold, FALSE) = FALSE
+      ORDER BY id DESC
+    `);
+
+    return res.json({
+      success: true,
+      products: result.rows
+    });
+  } catch (error) {
+    console.error("GET APPROVED PRODUCTS ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "KUBONA UMUSARURO WEMEJWE BYANZE."
     });
   }
 });
@@ -105,7 +422,7 @@ app.get("/api/products", async (req, res) => {
 });
 
 // POST PRODUCT
-app.post("/api/products", upload.single("media"), async (req, res) => {  let client;
+app.post("/api/products", authenticateOrderUser, upload.single("media"), async (req, res) => {  let client;
   let transactionStarted = false;
 
   try {
@@ -141,14 +458,7 @@ app.post("/api/products", upload.single("media"), async (req, res) => {  let cli
       });
     }
 
-    if (!farmerName?.trim() || !farmerPhone?.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Izina na telefoni by'umuhinzi birakenewe.",
-      });
-    }
-
-    if (quantity === undefined || quantity === null || quantity === "") {
+if (quantity === undefined || quantity === null || quantity === "") {
       return res.status(400).json({
         success: false,
         message: "Ingano y'umusaruro irakenewe.",
@@ -186,56 +496,59 @@ app.post("/api/products", upload.single("media"), async (req, res) => {  let cli
       });
     }
 
-    const cleanFarmerName = farmerName.trim();
-    const cleanFarmerPhone = farmerPhone.trim();
     const productStatus = status?.trim() || "NTABWO WAGENZUWE";
 
     client = await pool.connect();
     await client.query("BEGIN");
     transactionStarted = true;
 
-    // SHAKA UMUHINZI UKORESHEJE IZINA NA TELEFONI
-    const farmerResult = await client.query(
-      `
-      SELECT id
-      FROM farmers
-      WHERE LOWER(TRIM(farmer_name)) = LOWER($1)
-        AND phone = $2
-      ORDER BY id ASC
-      LIMIT 2
-      `,
-      [cleanFarmerName, cleanFarmerPhone]
-    );
+    // REBA ROLE NA FARMER_ID BYA KONTI YINJIYE
+if (!["UMUHINZI", "UMWOROZI"].includes(req.user?.role)) {
+  await client.query("ROLLBACK");
+  transactionStarted = false;
 
-    let farmerId;
+  return res.status(403).json({
+    success: false,
+    message: "UMUHINZI CYANGWA UMWOROZI NI WE WEMEREWE GUSHYIRA UMUSARURO KU ISOKO."
+  });
+}
 
-    if (farmerResult.rows.length > 1) {
-      await client.query("ROLLBACK");
-      transactionStarted = false;
+const farmerId = Number(req.user?.farmer_id);
 
-      return res.status(409).json({
-        success: false,
-        message:
-          "Hari inyandiko z'abahinzi zisubiramo izina na telefoni. Banza uzikosore muri database.",
-      });
-    }
+if (!Number.isInteger(farmerId) || farmerId <= 0) {
+  await client.query("ROLLBACK");
+  transactionStarted = false;
 
-    if (farmerResult.rows.length === 1) {
-      farmerId = farmerResult.rows[0].id;
-    } else {
-      const newFarmer = await client.query(
-        `
-        INSERT INTO farmers (farmer_name, phone)
-        VALUES ($1, $2)
-        RETURNING id
-        `,
-        [cleanFarmerName, cleanFarmerPhone]
-      );
+  return res.status(403).json({
+    success: false,
+    message: "KONTI YAWE NTIHUJE N'UMUHINZI CYANGWA UMWOROZI."
+  });
+}
 
-      farmerId = newFarmer.rows[0].id;
-    }
+const farmerResult = await client.query(
+  `
+  SELECT id, farmer_name, phone
+  FROM farmers
+  WHERE id = $1
+  LIMIT 1
+  `,
+  [farmerId]
+);
 
-    // BIKA UMUSARURO UHURIJE NA FARMER_ID
+if (farmerResult.rows.length === 0) {
+  await client.query("ROLLBACK");
+  transactionStarted = false;
+
+  return res.status(404).json({
+    success: false,
+    message: "KONTI YAWE NTIBONETSE MU BAHINZI CYANGWA ABOROZI."
+  });
+}
+
+const cleanFarmerName = farmerResult.rows[0].farmer_name;
+const cleanFarmerPhone = farmerResult.rows[0].phone;
+
+// BIKA UMUSARURO UHURIJE NA FARMER_ID
     const productResult = await client.query(
       `
       INSERT INTO products (
@@ -317,7 +630,14 @@ app.post("/api/products", upload.single("media"), async (req, res) => {  let cli
 });
 
 // GET ORDERS
-app.get("/api/orders", async (req, res) => {
+app.get("/api/orders", authenticateOrderUser, async (req, res) => {
+  if (!["ADMIN", "UMUHUZA"].includes(req.user?.role)) {
+    return res.status(403).json({
+      success: false,
+      message: "IKI GIKORWA CYEMEREWE ADMIN GUSA.",
+    });
+  }
+
   try {
     const result = await pool.query(`
       SELECT
@@ -348,14 +668,6 @@ app.get("/api/orders/buyer/:phone", async (req, res) => {
   try {
     const phone = req.params.phone.trim();
 
-    const productResult = await pool.query(
-      `SELECT farmer_name, farmer_phone FROM products WHERE id = $1 LIMIT 1`,
-      [productId]
-    );
-    const productFarmer = productResult.rows[0];
-    const finalFarmerName = farmerName || productFarmer?.farmer_name || null;
-    const finalFarmerPhone = farmerPhone || productFarmer?.farmer_phone || null;
-
     const result = await pool.query(
       `
       SELECT *
@@ -382,6 +694,9 @@ app.get("/api/orders/buyer/:phone", async (req, res) => {
 
 // POST ORDER
 app.post("/api/orders", async (req, res) => {
+  let client;
+  let transactionStarted = false;
+
   try {
     const {
       productId,
@@ -421,15 +736,44 @@ app.post("/api/orders", async (req, res) => {
       });
     }
 
-    const productResult = await pool.query(
-      `SELECT farmer_name, farmer_phone FROM products WHERE id = $1 LIMIT 1`,
+    await soldSchemaReady;
+
+    client = await pool.connect();
+
+    await client.query("BEGIN");
+    transactionStarted = true;
+
+    // FUNGIRA UMUSARURO ABANDI BAGUZI
+    const productResult = await client.query(
+      `UPDATE products
+       SET is_sold = TRUE,
+           sold_at = NOW()
+       WHERE id = $1
+         AND COALESCE(is_sold, FALSE) = FALSE
+       RETURNING farmer_name, farmer_phone`,
       [productId]
     );
-    const productFarmer = productResult.rows[0];
-    const finalFarmerName = farmerName || productFarmer?.farmer_name || null;
-    const finalFarmerPhone = farmerPhone || productFarmer?.farmer_phone || null;
 
-    const result = await pool.query(
+    if (productResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+
+      return res.status(409).json({
+        success: false,
+        message: "Uyu musaruro waramaze gutumizwa cyangwa ntukiboneka.",
+      });
+    }
+
+    const productFarmer = productResult.rows[0];
+
+    const finalFarmerName =
+      farmerName || productFarmer.farmer_name || null;
+
+    const finalFarmerPhone =
+      farmerPhone || productFarmer.farmer_phone || null;
+
+    // BIKA KOMANDE
+    const result = await client.query(
       `
       INSERT INTO orders (
         product_id,
@@ -493,15 +837,23 @@ app.post("/api/orders", async (req, res) => {
       ]
     );
 
-    res.status(201).json({
+    await client.query("COMMIT");
+    transactionStarted = false;
+
+    return res.status(201).json({
       success: true,
-      message: "KOMANDE YABITSWE MURI DATABASE.",
+      message: "KOMANDE YABITSWE. UMUSARURO WAKUWE KU ISOKO.",
       order: result.rows[0],
     });
+
   } catch (error) {
+    if (client && transactionStarted) {
+      await client.query("ROLLBACK").catch(() => {});
+    }
+
     console.error("POST ORDER ERROR:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "KUBIKA KOMANDE BYANZE.",
       error:
@@ -509,15 +861,19 @@ app.post("/api/orders", async (req, res) => {
           ? error.message
           : undefined,
     });
+
+  } finally {
+    if (client) client.release();
   }
 });
-
 // UPDATE ORDER STATUS
-app.patch("/api/orders/:id/status", async (req, res) => {
-  try {
-    const { status } = req.body;
-    const id = Number(req.params.id);
+app.patch("/api/orders/:id/status", authenticateOrderUser, async (req, res) => {
+  const id = Number(req.params.id);
+  const { status } = req.body;
+  let client;
+  let transactionStarted = false;
 
+  try {
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         success: false,
@@ -525,41 +881,453 @@ app.patch("/api/orders/:id/status", async (req, res) => {
       });
     }
 
-    if (typeof status !== "string" || !status.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Status irakenewe."
+    // BUYER CONFIRMS RECEIPT
+    if (status === "YAKIRIWE N'UMUGUZI") {
+      authenticateOrderUser(req, res, () => {});
+      if (res.headersSent) return;
+
+      if (req.user.role !== "UMUGUZI") {
+        return res.status(403).json({
+          success: false,
+          message: "IKI GIKORWA CYEMEREWE UMUGUZI GUSA."
+        });
+      }
+
+      await pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_received_at TIMESTAMPTZ");
+      const buyerOrder = await pool.query(
+        `SELECT buyer_phone, status FROM orders WHERE id = $1`,
+        [id]
+      );
+
+      if (buyerOrder.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "KOMANDE NTIBONETSE."
+        });
+      }
+
+      const normalizePhone = (phone) =>
+        String(phone || "").replace(/\D/g, "").replace(/^250/, "0");
+
+      if (
+        normalizePhone(req.user.phone) !==
+        normalizePhone(buyerOrder.rows[0].buyer_phone)
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "NTURI WOWATANZE IRI KOMANDE."
+        });
+      }
+
+      if (!["YOHEREJWE", "YAHAGEZE"].includes(buyerOrder.rows[0].status)) {
+        return res.status(409).json({
+          success: false,
+          message: "UMUSARURO UGOMBA KUBA WOHEREJWE MBERE YO KWAKIRWA."
+        });
+      }
+
+      const received = await pool.query(
+        `UPDATE orders
+         SET status = $1, buyer_received_at = NOW(), updated_at = NOW()
+         WHERE id = $2 AND status IN ('YOHEREJWE', 'YAHAGEZE')
+         RETURNING *`,
+        ["YAKIRIWE N'UMUGUZI", id]
+      );
+
+      if (received.rows.length === 0) {
+        return res.status(409).json({
+          success: false,
+          message: "STATUS YAHINDUTSE. ONGERA UREBE KOMANDE."
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: "UMUSARURO WAKIRIWE NEZA.",
+        order: received.rows[0]
       });
     }
 
-    const result = await pool.query(
-      `UPDATE orders
-       SET status = $1,
-           updated_at = NOW()
-       WHERE id = $2
-       RETURNING *`,
-      [status.trim(), id]
+    const allowedStatuses = [
+      "YEMEJWE N'UMUHUZA",
+      "YANZWE N'UMUHUZA",
+      "TEGEREJE DELIVERY",
+      "YOHEREJWE",
+      "YAHAGEZE"
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "STATUS NTEMEWE."
+      });
+    }
+
+    if (!["UMUHUZA", "ADMIN"].includes(req.user?.role)) {
+      return res.status(403).json({
+        success: false,
+        message: "IKI GIKORWA CYEMEREWE UMUHUZA GUSA."
+      });
+    }
+
+    client = await pool.connect();
+
+    await client.query("BEGIN");
+    transactionStarted = true;
+
+    const orderResult = await client.query(
+      `SELECT * FROM orders WHERE id = $1 FOR UPDATE`,
+      [id]
     );
 
-    if (result.rows.length === 0) {
+    if (orderResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+
       return res.status(404).json({
         success: false,
         message: "KOMANDE NTIBONETSE."
       });
     }
 
+    const order = orderResult.rows[0];
+
+    // DELIVERY: kubika status gusa, nta kugabanya umusaruro.
+    const deliveryTransitions = {
+      "TEGEREJE DELIVERY": "YEMEJWE N'UMUHUZA",
+      "YOHEREJWE": "TEGEREJE DELIVERY",
+      "YAHAGEZE": "YOHEREJWE"
+    };
+
+    if (Object.prototype.hasOwnProperty.call(deliveryTransitions, status)) {
+      const requiredPreviousStatus = deliveryTransitions[status];
+
+      if (order.status !== requiredPreviousStatus) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+
+        return res.status(409).json({
+          success: false,
+          message: "STATUS YA DELIVERY NTIKURIKIRANYE N'IGIHE KIGEZEHO.",
+          currentStatus: order.status,
+          requiredStatus: requiredPreviousStatus
+        });
+      }
+
+      const deliveryUpdate = await client.query(
+        `UPDATE orders
+         SET status = $1,
+             updated_at = NOW()
+         WHERE id = $2
+         RETURNING *`,
+        [status, id]
+      );
+
+      await client.query("COMMIT");
+      transactionStarted = false;
+
+      return res.json({
+        success: true,
+        message: "STATUS YA DELIVERY YABITSWE MURI POSTGRESQL.",
+        order: deliveryUpdate.rows[0]
+      });
+    }
+
+    if (order.status === "YEMEJWE N'UMUHUZA") {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+
+      return res.status(409).json({
+        success: false,
+        message: "IYI KOMANDE YARAMAZE KWEMEZWA. NTA MUSARURO WONDEYE KABIRI."
+      });
+    }
+
+    if (order.status !== "TEGEREJE UMUHUZA") {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+
+      return res.status(409).json({
+        success: false,
+        message: "IYI KOMANDE NTIKIRI MU RUTONDE RW'IZITEGEREJE."
+      });
+    }
+
+    // Iyo komande yanze, subiza umusaruro ku isoko.
+    if (status === "YANZWE N'UMUHUZA") {
+      const rejected = await client.query(
+        `UPDATE orders
+         SET status = $1, updated_at = NOW()
+         WHERE id = $2
+         RETURNING *`,
+        [status, id]
+      );
+
+      await client.query(
+        `UPDATE products
+         SET is_sold = FALSE,
+             sold_at = NULL,
+             status = 'WEMEJWE',
+             updated_at = NOW()
+         WHERE id = $1`,
+        [order.product_id]
+      );
+
+      await client.query("COMMIT");
+      transactionStarted = false;
+
+      return res.json({
+        success: true,
+        message: "KOMANDE YANZWE. UMUSARURO WASUBIYE KU ISOKO.",
+        order: rejected.rows[0]
+      });
+    }
+
+    // Gufunga umusaruro kugira ngo utagabanywa n'andi makomende icyarimwe.
+    const productId = Number(order.product_id);
+    const requestedQuantity = Number(order.requested_quantity);
+
+    if (
+      !Number.isInteger(productId) ||
+      productId <= 0 ||
+      !Number.isFinite(requestedQuantity) ||
+      requestedQuantity <= 0
+    ) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+
+      return res.status(400).json({
+        success: false,
+        message: "IBIMENYETSO BY'UMUSARURO CYANGWA INGANO WASABWE SI BYO."
+      });
+    }
+
+    const productResult = await client.query(
+      `SELECT * FROM products WHERE id = $1 FOR UPDATE`,
+      [productId]
+    );
+
+    if (productResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+
+      return res.status(404).json({
+        success: false,
+        message: "UMUSARURO NTUBONETSE."
+      });
+    }
+
+    const product = productResult.rows[0];
+    const currentQuantity = Number(product.quantity);
+
+    if (product.status !== "WEMEJWE") {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+
+      return res.status(409).json({
+        success: false,
+        message: "UMUSARURO NTUKIRI MU MITUNGO YEMEJWE."
+      });
+    }
+
+    if (
+      !Number.isFinite(currentQuantity) ||
+      currentQuantity < requestedQuantity
+    ) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+
+      return res.status(409).json({
+        success: false,
+        message: "UMUSARURO USIGAYE NTUHAGIJE INGANO UMUGUZI ASABA.",
+        availableQuantity: currentQuantity
+      });
+    }
+
+    const remainingQuantity = currentQuantity - requestedQuantity;
+    const newProductStatus =
+      remainingQuantity <= 0 ? "YARAGUZWE" : "WEMEJWE";
+
+    await client.query(
+      `UPDATE products
+       SET quantity = $1,
+           status = $2,
+           is_sold = $3,
+           sold_at = CASE WHEN $3 = TRUE THEN NOW() ELSE NULL END,
+           updated_at = NOW()
+       WHERE id = $4`,
+      [
+        remainingQuantity,
+        newProductStatus,
+        remainingQuantity <= 0,
+        productId
+      ]
+    );
+
+    const approved = await client.query(
+      `UPDATE orders
+       SET status = $1,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [status, id]
+    );
+
+    await client.query("COMMIT");
+    transactionStarted = false;
+
     return res.json({
       success: true,
-      message: "STATUS YA KOMANDE YABITSWE NEZA.",
-      order: result.rows[0]
+      message: "KOMANDE YEMEJWE. UMUSARURO USIGAYE WAVUGURUWE.",
+      order: approved.rows[0],
+      product: {
+        id: productId,
+        quantity: remainingQuantity,
+        status: newProductStatus
+      }
     });
+
   } catch (error) {
+    if (client && transactionStarted) {
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        console.error("ROLLBACK ERROR:", rollbackError);
+      }
+    }
+
     console.error("UPDATE ORDER STATUS ERROR:", error);
 
     return res.status(500).json({
       success: false,
       message: "GUHINDURA STATUS BYANZE.",
-      error: error.message
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : undefined
+    });
+
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
+});
+
+
+// INTERMEDIARY PROFILE DATABASE
+const intermediaryProfileSchemaReady = (async () => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS intermediary_profile (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      full_name TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      work_place TEXT NOT NULL DEFAULT '',
+      district TEXT NOT NULL DEFAULT '',
+      sector TEXT NOT NULL DEFAULT '',
+      cell TEXT NOT NULL DEFAULT '',
+      village TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    ALTER TABLE intermediary_profile
+    ADD COLUMN IF NOT EXISTS province TEXT NOT NULL DEFAULT ''
+  `);
+
+  await pool.query(`
+    INSERT INTO intermediary_profile (id)
+    VALUES (1)
+    ON CONFLICT (id) DO NOTHING
+  `);
+})();
+
+// GET INTERMEDIARY PROFILE
+app.get("/api/intermediary-profile", async (req, res) => {
+  try {
+    await intermediaryProfileSchemaReady;
+
+    const result = await pool.query(
+      "SELECT * FROM intermediary_profile WHERE id = 1"
+    );
+
+    return res.json({
+      success: true,
+      profile: result.rows[0]
+    });
+  } catch (error) {
+    console.error("GET INTERMEDIARY PROFILE ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "KUBONA UMWIRONDORO BYANZE."
+    });
+  }
+});
+
+// SAVE INTERMEDIARY PROFILE
+app.put("/api/intermediary-profile", async (req, res) => {
+  try {
+    await intermediaryProfileSchemaReady;
+
+    const fields = [
+      "full_name", "phone", "work_place",
+      "province", "district", "sector", "cell", "village"
+    ];
+
+    const profile = {};
+
+    for (const field of fields) {
+      profile[field] = String(req.body[field] ?? "").trim();
+
+      if (!profile[field]) {
+        return res.status(400).json({
+          success: false,
+          message: "Uzuza amakuru yose y'umwirondoro mbere yo kubika."
+        });
+      }
+    }
+
+    const result = await pool.query(`
+      INSERT INTO intermediary_profile (
+        id, full_name, phone, work_place,
+        province, district, sector, cell, village, updated_at
+      )
+      VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        full_name = EXCLUDED.full_name,
+        phone = EXCLUDED.phone,
+        work_place = EXCLUDED.work_place,
+        province = EXCLUDED.province,
+        district = EXCLUDED.district,
+        sector = EXCLUDED.sector,
+        cell = EXCLUDED.cell,
+        village = EXCLUDED.village,
+        updated_at = NOW()
+      RETURNING *
+    `, [
+      profile.full_name,
+      profile.phone,
+      profile.work_place,
+      profile.province,
+      profile.district,
+      profile.sector,
+      profile.cell,
+      profile.village
+    ]);
+
+    return res.json({
+      success: true,
+      message: "UMWIRONDORO WABITSWE NEZA.",
+      profile: result.rows[0]
+    });
+  } catch (error) {
+    console.error("SAVE INTERMEDIARY PROFILE ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "KUBIKA UMWIRONDORO BYANZE."
     });
   }
 });
@@ -582,6 +1350,23 @@ process.on("SIGTERM", () => {
     process.exit(0);
   });
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
