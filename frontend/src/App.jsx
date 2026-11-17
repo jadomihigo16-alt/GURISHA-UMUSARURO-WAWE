@@ -1900,7 +1900,13 @@ const handleApproveOrder = async (orderId) => {
         "https://gurisha-umusaruro-wawe.onrender.com/api/products"
       );
 
-      const productsData = await productsResponse.json();
+      const productsRaw = await productsResponse.text();
+      let productsData;
+      try {
+        productsData = JSON.parse(productsRaw);
+      } catch {
+        throw new Error("API Y'IBICURUZWA YASUBIJE HTML AHO KUGARURA JSON. REBA API URL.");
+      }
 
       if (productsResponse.ok && productsData.success) {
         setMyProducts(productsData.products);
@@ -6394,6 +6400,7 @@ const pendingProducts =
 }
 
 export default App;
+
 
 
 
