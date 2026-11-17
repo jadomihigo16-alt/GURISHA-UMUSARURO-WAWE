@@ -1,6 +1,8 @@
+﻿import RWANDA_LOCATIONS from "./data/rwanda-locations.json";
 import { useEffect, useState } from "react";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
+import AdminDashboard from "./AdminDashboard";
 
 const GIS_BASE =
   "https://moegis.environment.gov.rw/server/rest/services/Hosted/Administrative_boundaries/FeatureServer";
@@ -215,6 +217,231 @@ const styles = {
 
 function App() {
   const [page, setPage] = useState("home");
+  const [loginPhone, setLoginPhone] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [registerFullName, setRegisterFullName] = useState("");
+  const [registerPhone, setRegisterPhone] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [registerRole, setRegisterRole] = useState("UMUHINZI");
+  const [registerProvince, setRegisterProvince] = useState("");
+  const [registerDistrict, setRegisterDistrict] = useState("");
+  const [registerSector, setRegisterSector] = useState("");
+  const [registerCell, setRegisterCell] = useState("");
+  const [registerVillage, setRegisterVillage] = useState("");
+  const [registerError, setRegisterError] = useState("");
+  const [registerLoading, setRegisterLoading] = useState(false);
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setRegisterError("");
+    setRegisterLoading(true);
+
+    try {
+      const response = await fetch(
+        "http://localhost:5001/api/auth/register",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            full_name: registerFullName.trim(),
+            phone: registerPhone.trim(),
+            password: registerPassword,
+            role: registerRole,
+            province: registerProvince,
+            district: registerDistrict,
+            sector: registerSector,
+            cell: registerCell,
+            village: registerVillage
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "GUKORA KONTI BYANZE.");
+      }
+
+      alert(data.message || "KONTI YAKOZWE NEZA.");
+
+      setLoginPhone(registerPhone.trim());
+      setLoginPassword("");
+
+      setRegisterFullName("");
+      setRegisterPhone("");
+      setRegisterPassword("");
+      setRegisterRole("UMUHINZI");
+      setRegisterProvince("");
+      setRegisterDistrict("");
+      setRegisterSector("");
+      setRegisterCell("");
+      setRegisterVillage("");
+
+      setPage("login");
+
+    } catch (error) {
+      setRegisterError(error.message || "GUKORA KONTI BYANZE.");
+    } finally {
+      setRegisterLoading(false);
+    }
+  };
+  const handleLogout = () => {
+    sessionStorage.removeItem("gurisha_token");
+    sessionStorage.removeItem("gurisha_user");
+    setLoginPhone("");
+    setLoginPassword("");
+    setLoginError("");
+    setPage("home");
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginError("");
+    setLoginLoading(true);
+
+    try {
+      const response = await fetch("http://localhost:5001/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: loginPhone.trim(),
+          password: loginPassword
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "KWINJIRA BYANZE.");
+      }
+
+      if (data.user.role === "ADMIN") {
+        throw new Error("ADMIN AKORESHA LOGIN YE YIHARIYE.");
+      }
+
+      sessionStorage.setItem("gurisha_token", data.token);
+      sessionStorage.setItem("gurisha_user", JSON.stringify(data.user));
+
+      if (["UMUHINZI", "UMWOROZI"].includes(data.user.role)) {
+        setPage("farmer");
+      } else if (data.user.role === "UMUGUZI") {
+        const buyerPhone = String(data.user.phone || "").trim();
+
+        setBuyerHistoryPhone(buyerPhone);
+        setBuyerOrder((prev) => ({
+          ...prev,
+          buyerPhone: buyerPhone,
+        }));
+
+        try {
+          const ordersResponse = await fetch(
+            `http://localhost:5001/api/orders/buyer/${encodeURIComponent(buyerPhone)}`
+          );
+
+          const ordersData = await ordersResponse.json();
+
+          if (ordersResponse.ok && ordersData.success) {
+            const buyerOrders = (ordersData.orders || []).map((order) => ({
+              ...order,
+              buyerPhone: order.buyer_phone || order.buyerPhone || buyerPhone,
+              buyerName: order.buyer_name || order.buyerName || "",
+              productName: order.product_name || order.productName || "",
+              farmer_name: order.farmer_name || order.farmerName || "",
+              requestedQuantity:
+                order.requested_quantity || order.requestedQuantity || "",
+              unit: order.unit || "",
+              price: order.price || 0,
+              status: order.status || "",
+            }));
+
+            setOrders(buyerOrders);
+          } else {
+            setOrders([]);
+            console.error("KUBONA KOMANDE BYANZE:", ordersData.message);
+          }
+        } catch (error) {
+          console.error("BUYER ORDERS ERROR:", error);
+          setOrders([]);
+        }
+
+        setPage("buyer");
+      } else if (data.user.role === "UMUCURUZI") {
+        const profileResponse = await fetch(
+          "http://localhost:5001/api/umucuruzi/me",
+          { headers: { Authorization: `Bearer ${data.token}` } }
+        );
+        const profileData = await profileResponse.json();
+
+        if (!profileResponse.ok || !profileData.success) {
+          throw new Error(profileData.message || "UMWIRONDORO WA UMUCURUZI NTUBONETSE.");
+        }
+
+        setIntermediaryProfile({
+          ...emptyIntermediaryProfile,
+          ...profileData.profile
+        });
+        setPage("agent");
+      } else {
+        throw new Error("URU RWAWE NTIRWEMEWE.");
+      }
+    } catch (error) {
+      sessionStorage.removeItem("gurisha_token");
+      sessionStorage.removeItem("gurisha_user");
+      setLoginError(error.message || "KWINJIRA BYANZE.");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const emptyIntermediaryProfile = {
+    full_name: "",
+    phone: "",
+    work_place: "",
+    province: "",
+    district: "",
+    sector: "",
+    cell: "",
+    village: ""
+  };
+
+  const [intermediaryProfile, setIntermediaryProfile] =
+    useState(emptyIntermediaryProfile);
+
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  const [profileSectors, setProfileSectors] = useState([]);
+  const [profileCells, setProfileCells] = useState([]);
+  const [profileVillages, setProfileVillages] = useState([]);
+  const [buyerSearch, setBuyerSearch] = useState("");
+  const [buyerCategory, setBuyerCategory] = useState("BYOSE");
+  const [farmerSearch, setFarmerSearch] = useState("");
+  const [agentSearch, setAgentSearch] = useState("");
+
+  const matchesProductSearch = (product, searchTerm) => {
+    const searchable = [
+      product.name,
+      product.product_name,
+      product.type,
+      product.category,
+      product.farmer_name,
+      product.farmer_phone,
+      product.phone,
+      product.province,
+      product.district,
+      product.sector,
+      product.cell,
+      product.village,
+      product.status,
+      product.offer_status,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return searchable.includes(searchTerm.trim().toLowerCase());
+  };
 
   const [
     showFarmerProductForm,
@@ -230,14 +457,45 @@ function App() {
 useEffect(() => {
   const loadProducts = async () => {
     try {
+      const token = sessionStorage.getItem("gurisha_token");
+      const user = JSON.parse(
+        sessionStorage.getItem("gurisha_user") || "null"
+      );
+
+      if (!token || !user?.role) {
+        setMyProducts([]);
+        return;
+      }
+
+      let endpoint = "";
+
+      if (["UMUHINZI", "UMWOROZI"].includes(user.role)) {
+        endpoint = "/api/products/mine";
+      } else if (user.role === "UMUCURUZI") {
+        endpoint = "/api/products";
+      } else if (user.role === "UMUGUZI") {
+        endpoint = "/api/products/approved";
+      } else {
+        setMyProducts([]);
+        return;
+      }
+
       const response = await fetch(
-        "https://gurisha-umusaruro-wawe.onrender.com/api/products"
+        `http://localhost:5001${endpoint}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
 
       const data = await response.json();
 
       if (data.success) {
         setMyProducts(data.products);
+      } else {
+        setMyProducts([]);
+        console.error("LOAD PRODUCTS:", data.message);
       }
     } catch (error) {
       console.error("LOAD PRODUCTS ERROR:", error);
@@ -245,6 +503,10 @@ useEffect(() => {
   };
 
   loadProducts();
+
+  const refreshInterval = setInterval(loadProducts, 5000);
+
+  return () => clearInterval(refreshInterval);
 }, []);
   const [farmerProduct, setFarmerProduct] = useState({
     farmerName: "",
@@ -328,6 +590,66 @@ useEffect(() => {
   ] = useState(false);
 
   const [orders, setOrders] = useState([]);
+  // KUVUGURURA KOMANDE ZA UMUCURUZI BURI SEGONDA 15
+  useEffect(() => {
+    if (page !== "agent") return;
+
+    let active = true;
+
+    const loadAgentOrders = async () => {
+      try {
+        const token = sessionStorage.getItem("gurisha_token");
+        if (!token) return;
+
+        const response = await fetch(
+          "http://localhost:5001/api/orders",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const data = await response.json();
+
+        if (active && response.ok && data.success) {
+          const normalizedOrders = (data.orders || []).map((order) => ({
+            ...order,
+            buyerName: order.buyer_name || order.buyerName || "",
+            buyerPhone: order.buyer_phone || order.buyerPhone || "",
+            productName: order.product_name || order.productName || "",
+            productType: order.product_type || order.productType || "",
+            farmerName: order.farmer_name || order.farmerName || "",
+            farmerPhone: order.farmer_phone || order.farmerPhone || "",
+            requestedQuantity:
+              order.requested_quantity ?? order.requestedQuantity ?? "",
+            availableQuantity:
+              order.available_quantity ?? order.availableQuantity ?? "",
+            buyerProvince: order.buyer_province || order.buyerProvince || "",
+            buyerDistrict: order.buyer_district || order.buyerDistrict || "",
+            buyerSector: order.buyer_sector || order.buyerSector || "",
+            buyerCell: order.buyer_cell || order.buyerCell || "",
+            buyerVillage: order.buyer_village || order.buyerVillage || "",
+          }));
+
+          setOrders(normalizedOrders);
+        } else if (active && !response.ok) {
+          console.error("KUBONA KOMANDE BYANZE:", data.message);
+        }
+      } catch (error) {
+        console.error("AGENT ORDERS ERROR:", error);
+      }
+    };
+
+    loadAgentOrders();
+    const refreshTimer = setInterval(loadAgentOrders, 15000);
+
+    return () => {
+      active = false;
+      clearInterval(refreshTimer);
+    };
+  }, [page]);
+
 const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
 
   const [buyerOrder, setBuyerOrder] = useState({
@@ -356,6 +678,101 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
     setBuyerVillages,
   ] = useState([]);
 
+  useEffect(() => {
+    if (!intermediaryProfile.district) {
+      setProfileSectors([]);
+      return;
+    }
+
+    const loadProfileSectors = async () => {
+      try {
+        const where = encodeURIComponent(
+          `district='${intermediaryProfile.district}'`
+        );
+        const response = await fetch(
+          `${GIS_BASE}/1/query?where=${where}&outFields=sector&returnGeometry=false&orderByFields=sector&f=json`
+        );
+        if (!response.ok) throw new Error("Failed to load sectors");
+        const data = await response.json();
+        setProfileSectors([
+          ...new Set(
+            (data.features || [])
+              .map((item) => item.attributes?.sector)
+              .filter(Boolean)
+          ),
+        ]);
+      } catch (error) {
+        console.error("PROFILE SECTORS ERROR:", error);
+        setProfileSectors([]);
+      }
+    };
+
+    loadProfileSectors();
+  }, [intermediaryProfile.district]);
+
+  useEffect(() => {
+    if (!intermediaryProfile.district || !intermediaryProfile.sector) {
+      setProfileCells([]);
+      return;
+    }
+
+    const loadProfileCells = async () => {
+      try {
+        const where = encodeURIComponent(
+          `district='${intermediaryProfile.district}' AND sector='${intermediaryProfile.sector}'`
+        );
+        const response = await fetch(
+          `${GIS_BASE}/2/query?where=${where}&outFields=cell&returnGeometry=false&orderByFields=cell&f=json`
+        );
+        if (!response.ok) throw new Error("Failed to load cells");
+        const data = await response.json();
+        setProfileCells([
+          ...new Set(
+            (data.features || [])
+              .map((item) => item.attributes?.cell)
+              .filter(Boolean)
+          ),
+        ]);
+      } catch (error) {
+        console.error("PROFILE CELLS ERROR:", error);
+        setProfileCells([]);
+      }
+    };
+
+    loadProfileCells();
+  }, [intermediaryProfile.district, intermediaryProfile.sector]);
+
+  useEffect(() => {
+    if (!intermediaryProfile.sector || !intermediaryProfile.cell) {
+      setProfileVillages([]);
+      return;
+    }
+
+    const loadProfileVillages = async () => {
+      try {
+        const where = encodeURIComponent(
+          `sector='${intermediaryProfile.sector}' AND cell='${intermediaryProfile.cell}'`
+        );
+        const response = await fetch(
+          `${GIS_BASE}/3/query?where=${where}&outFields=village&returnGeometry=false&orderByFields=village&f=json`
+        );
+        if (!response.ok) throw new Error("Failed to load villages");
+        const data = await response.json();
+        setProfileVillages([
+          ...new Set(
+            (data.features || [])
+              .map((item) => item.attributes?.village)
+              .filter(Boolean)
+          ),
+        ]);
+      } catch (error) {
+        console.error("PROFILE VILLAGES ERROR:", error);
+        setProfileVillages([]);
+      }
+    };
+
+    loadProfileVillages();
+  }, [intermediaryProfile.sector, intermediaryProfile.cell]);
   useEffect(() => {
     if (!farmerProduct.district) {
       setAvailableSectors([]);
@@ -721,8 +1138,11 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
   const handleFarmerProductSubmit = async (e) => {
   e.preventDefault();
 
-  if (!farmerProduct.farmerName.trim()) {
-    alert("Andika izina ry'Umuhinzi / Umworozi.");
+  const account = JSON.parse(sessionStorage.getItem("gurisha_user") || "null");
+  const token = sessionStorage.getItem("gurisha_token");
+
+  if (!account || !token || !["UMUHINZI", "UMWOROZI"].includes(account.role)) {
+    alert("Banza winjire muri konti y'umuhinzi cyangwa umworozi.");
     return;
   }
 
@@ -771,17 +1191,14 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
     return;
   }
 
-  if (!farmerProduct.phone.trim()) {
-    alert("Andika telefoni y'umuhinzi.");
-    return;
-  }
+
 
   try {
     const productPayload = {
       name: farmerProduct.name,
       type: farmerProduct.type,
-      farmerName: farmerProduct.farmerName.trim(),
-      farmerPhone: farmerProduct.phone,
+      farmerName: account.full_name,
+      farmerPhone: account.phone,
       quantity: Number(farmerProduct.quantity),
       unit: farmerProduct.unit,
       price: Number(farmerProduct.price || 0),
@@ -794,11 +1211,12 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
     };
 
     const response = await fetch(
-      "https://gurisha-umusaruro-wawe.onrender.com/api/products",
+      "http://localhost:5001/api/products",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(productPayload),
       }
@@ -815,9 +1233,9 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
     const savedProduct = {
       ...farmerProduct,
       id: data.product.id,farmer_name:
-  data.product.farmer_name || farmerProduct.farmerName.trim(),
+  data.product.farmer_name || account.full_name,
 farmer_phone:
-  data.product.farmer_phone || farmerProduct.phone.trim(),
+  data.product.farmer_phone || account.phone,
       status: data.product.status,
       createdAt: new Date().toLocaleDateString("rw-RW"),
     };
@@ -830,7 +1248,7 @@ farmer_phone:
     alert(
       "UMUSARURO WABITSWE NEZA MURI DATABASE.\n\n" +
         "Status: NTABWO WAGENZUWE\n\n" +
-        "UMUHUZA agomba kuwugenura mbere yo kwemezwa."
+        "UMUCURUZI agomba kuwugenura mbere yo kwemezwa."
     );
 
     setFarmerProduct({
@@ -864,7 +1282,122 @@ farmer_phone:
     );
   }
 };
-const handleVerifyProduct = (productId) => {
+const handleMarkProductSold = async (product) => {
+  if (!window.confirm("Uremeza ko wagurishije uyu musaruro?")) return;
+
+  try {
+    const response = await fetch(
+      `http://localhost:5001/api/products/${product.id}/sold`,
+      { method: "POST" }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Ntibyashobotse.");
+    }
+
+    setMyProducts((prev) =>
+      prev.map((item) =>
+        String(item.id) === String(product.id)
+          ? { ...item, is_sold: true, sold_at: data.product.sold_at }
+          : item
+      )
+    );
+
+    alert("Umusaruro wagaragajwe ko WAGURISHIJWE.");
+  } catch (error) {
+    alert("KUGARAGAZA KO WAGURISHIJWE BYANZE: " + error.message);
+  }
+};
+const handleOfferPrice = async (product) => {
+  const enteredPrice = window.prompt(
+    "ANDIKA IGICIRO UMUCURUZI YIFUZA GUTANGA:"
+  );
+
+  if (enteredPrice === null) return;
+
+  const offeredPrice = Number(
+    String(enteredPrice).replace(",", ".")
+  );
+
+  if (!Number.isFinite(offeredPrice) || offeredPrice <= 0) {
+    alert("IGICIRO UGOMBA KUBA UMUBARE URUTA ZERO.");
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `http://localhost:5001/api/products/${product.id}/offer`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offeredPrice }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Ntibyashobotse.");
+    }
+
+    setMyProducts((prev) =>
+      prev.map((item) =>
+        String(item.id) === String(product.id)
+          ? { ...item, ...data.product }
+          : item
+      )
+    );
+
+    alert("IGICIRO CYOHEREJWE KU MUHINZI NEZA.");
+  } catch (error) {
+    alert("KOHEREZA IGICIRO BYANZE: " + error.message);
+  }
+};
+
+const handleOfferResponse = async (product, responseChoice) => {
+  const message =
+    responseChoice === "ACCEPTED"
+      ? "Uremeza kwemera iki giciro?"
+      : "Uremeza kwanga iki giciro?";
+
+  if (!window.confirm(message)) return;
+
+  try {
+    const response = await fetch(
+      `http://localhost:5001/api/products/${product.id}/offer-response`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response: responseChoice }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Ntibyashobotse.");
+    }
+
+    setMyProducts((prev) =>
+      prev.map((item) =>
+        String(item.id) === String(product.id)
+          ? { ...item, ...data.product }
+          : item
+      )
+    );
+
+    alert(
+      responseChoice === "ACCEPTED"
+        ? "WEMEYE IGICIRO NEZA."
+        : "WANZE IGICIRO NEZA."
+    );
+  } catch (error) {
+    alert("GUTANGA IGISUBIZO BYANZE: " + error.message);
+  }
+};
+const handleVerifyProduct = async (productId) => {
     const reason = window.prompt(
       "ANDIKA IMPAMVU UMUSARURO UTAREMEJWE:"
     );
@@ -872,62 +1405,114 @@ const handleVerifyProduct = (productId) => {
     if (reason === null) return;
 
     if (!reason.trim()) {
-      alert(
-        "Ugomba kwandika IMPAMVU."
-      );
+      alert("Ugomba kwandika IMPAMVU.");
       return;
     }
 
-    setMyProducts((prev) =>
-      prev.map((product) =>
-        product.id === productId
-          ? {
-              ...product,
-              status:
-                "WAGENZUWE - NTABWO WEMEJWE",
-              verificationReason:
-                reason.trim(),
-              verifiedAt:
-                new Date().toLocaleDateString(
-                  "rw-RW"
-                ),
-            }
-          : product
-      )
-    );
+    try {
+      const response = await fetch(
+        `http://localhost:5001/api/products/${productId}/verify`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            reason: reason.trim(),
+          }),
+        }
+      );
 
-    alert(
-      "Umusaruro wagenzuwe.\n\n" +
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "KUGENZURA BYANZE.");
+      }
+
+      setMyProducts((prev) =>
+        prev.map((product) =>
+          product.id === productId
+            ? data.product
+            : product
+        )
+      );
+
+      alert(
+        "Umusaruro wagenzuwe neza.\n\n" +
         "Status: WAGENZUWE - NTABWO WEMEJWE\n\n" +
-        "IMPAMVU: " +
-        reason.trim()
-    );
+        "IMPAMVU: " + reason.trim()
+      );
+    } catch (error) {
+      alert("KUGENZURA UMUSARURO BYANZE: " + error.message);
+    }
   };
-
-  const handleApproveProduct = (productId) => {
-    setMyProducts((prev) =>
-      prev.map((product) =>
-        product.id === productId &&
-        product.status ===
-          "WAGENZUWE - NTABWO WEMEJWE"
-          ? {
-              ...product,
-              status: "WEMEJWE",
-              approvedAt:
-                new Date().toLocaleDateString(
-                  "rw-RW"
-                ),
-            }
-          : product
-      )
+  const handleApproveProduct = async (productId) => {
+    const product = myProducts.find(
+      (item) => String(item.id) === String(productId)
     );
 
-    alert(
-      "Umusaruro wemejwe neza.\n\n" +
-        "Status: WEMEJWE"
+    if (!product) {
+      alert("UMUSARURO NTIWABONETSE.");
+      return;
+    }
+
+    if (product.offer_status !== "ACCEPTED") {
+      alert("UMUHINZI AGOMBA KUBA YEMEYE IGICIRO BURI MBERE.");
+      return;
+    }
+
+    const enteredPrice = window.prompt(
+      "ANDIKA IGICIRO UZAGURISHAHO UMUSARURO (RWF):"
     );
+
+    if (enteredPrice === null) return;
+
+    const resalePrice = Number(
+      String(enteredPrice).replace(",", ".")
+    );
+
+    if (!Number.isFinite(resalePrice) || resalePrice <= 0) {
+      alert("IGICIRO UGOMBA KUBA UMUBARE URUTA ZERO.");
+      return;
+    }
+
+    if (!window.confirm(
+      "Ugiye kwemeza umusaruro ku giciro cya " +
+      resalePrice + " RWF. Uremeza?"
+    )) return;
+
+    try {
+      const response = await fetch(
+        `http://localhost:5001/api/products/${productId}/approve`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ resalePrice }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "KWEMEZA UMUSARURO BYANZE.");
+      }
+
+      setMyProducts((prev) =>
+        prev.map((item) =>
+          String(item.id) === String(productId)
+            ? { ...item, ...data.product }
+            : item
+        )
+      );
+
+      alert(
+        "UMUSARURO WEMEJWE NEZA.\n\n" +
+        "Igiciro cyo kugurishaho: " + data.product.resale_price + " RWF"
+      );
+    } catch (error) {
+      alert("KWEMEZA UMUSARURO BYANZE: " + error.message);
+    }
   };
-
   const handleBuyerOrderSubmit = async (e) => {
   e.preventDefault();
 
@@ -1008,7 +1593,7 @@ const handleVerifyProduct = (productId) => {
     requestedQuantity: buyerOrder.quantity,
 
     unit: selectedBuyerProduct.unit,
-    price: selectedBuyerProduct.price,
+    price: Number(selectedBuyerProduct.resale_price),
 
     province: selectedBuyerProduct.province,
     district: selectedBuyerProduct.district,
@@ -1022,12 +1607,12 @@ const handleVerifyProduct = (productId) => {
     buyerCell: buyerOrder.cell,
     buyerVillage: buyerOrder.village,
 
-    status: "TEGEREJE UMUHUZA",
+    status: "TEGEREJE UMUCURUZI",
   };
 
   try {
     const response = await fetch(
-      "https://gurisha-umusaruro-wawe.onrender.com/api/orders",
+      "http://localhost:5001/api/orders",
       {
         method: "POST",
         headers: {
@@ -1067,7 +1652,7 @@ const handleVerifyProduct = (productId) => {
       availableQuantity: selectedBuyerProduct.quantity,
 
       unit: selectedBuyerProduct.unit,
-      price: selectedBuyerProduct.price,
+      price: Number(selectedBuyerProduct.resale_price),
 
       requestedQuantity: buyerOrder.quantity,
 
@@ -1087,7 +1672,7 @@ const handleVerifyProduct = (productId) => {
 
       orderDate: new Date().toLocaleDateString("rw-RW"),
 
-      status: "TEGEREJE UMUHUZA",
+      status: "TEGEREJE UMUCURUZI",
     };
 
     setOrders((prev) => [
@@ -1117,7 +1702,7 @@ const handleVerifyProduct = (productId) => {
         "Telefoni: " +
         buyerOrder.buyerPhone +
         "\n\n" +
-        "KOMANDE yabitswe muri DATABASE kandi yoherejwe kuri UMUHUZA."
+        "KOMANDE yabitswe muri DATABASE kandi yoherejwe kuri UMUCURUZI."
     );
 
     setBuyerOrder({
@@ -1149,41 +1734,26 @@ const handleVerifyProduct = (productId) => {
     );
   }
 };
-const handleApproveOrder = (orderId) => {
-    setOrders((prev) =>
-      prev.map((order) =>
-        order.id === orderId
-          ? {
-              ...order,
-              status:
-                "YEMEJWE N'UMUHUZA",
-              approvedAt:
-                new Date().toLocaleDateString(
-                  "rw-RW"
-                ),
-            }
-          : order
-      )
+const handleApproveOrder = async (orderId) => {
+  try {
+    const response = await fetch(
+      `http://localhost:5001/api/orders/${orderId}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+            Authorization: `Bearer ${sessionStorage.getItem("gurisha_token")}`,
+        },
+        body: JSON.stringify({
+          status: "YEMEJWE N'UMUCURUZI",
+        }),
+      }
     );
 
-    alert(
-      "KOMANDE YEMEJWE.\n\n" +
-        "Status: YEMEJWE N'UMUHUZA"
-    );
-  };
+    const data = await response.json();
 
-  const handleRejectOrder = (orderId) => {
-    const reason = window.prompt(
-      "ANDIKA IMPAMVU KOMANDE YANZWE:"
-    );
-
-    if (reason === null) return;
-
-    if (!reason.trim()) {
-      alert(
-        "Ugomba kwandika IMPAMVU."
-      );
-      return;
+    if (!response.ok) {
+      throw new Error(data.message || "Kubika status byanze.");
     }
 
     setOrders((prev) =>
@@ -1191,26 +1761,95 @@ const handleApproveOrder = (orderId) => {
         order.id === orderId
           ? {
               ...order,
-              status:
-                "YANZWE N'UMUHUZA",
-              rejectionReason:
-                reason.trim(),
-              rejectedAt:
-                new Date().toLocaleDateString(
-                  "rw-RW"
-                ),
+              status: "YEMEJWE N'UMUCURUZI",
+              approvedAt: new Date().toLocaleDateString("rw-RW"),
+            }
+          : order
+      )
+    );
+
+    // KUVUGURURA UMUSARURO UVE MURI DATABASE
+    try {
+      const productsResponse = await fetch(
+        "http://localhost:5001/api/products"
+      );
+
+      const productsData = await productsResponse.json();
+
+      if (productsResponse.ok && productsData.success) {
+        setMyProducts(productsData.products);
+      } else {
+        console.error("PRODUCT REFRESH ERROR:", productsData);
+      }
+    } catch (refreshError) {
+      console.error("PRODUCT REFRESH ERROR:", refreshError);
+    }
+
+    alert(
+      "KOMANDE YEMEJWE kandi ibitswe muri PostgreSQL.\n\n" +
+      "Umusaruro usigaye wavuguruwe."
+    );
+  } catch (error) {
+    console.error("APPROVE ORDER ERROR:", error);
+    alert("KOMANDE NTIYABASHIJE KUBIKWA. Reba backend.");
+  }
+};
+
+  const handleRejectOrder = async (orderId) => {
+  const reason = window.prompt(
+    "ANDIKA IMPAMVU KOMANDE YANZWE:"
+  );
+
+  if (reason === null) return;
+
+  if (!reason.trim()) {
+    alert("Ugomba kwandika IMPAMVU.");
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `http://localhost:5001/api/orders/${orderId}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+            Authorization: `Bearer ${sessionStorage.getItem("gurisha_token")}`,
+        },
+        body: JSON.stringify({
+          status: "YANZWE N'UMUCURUZI",
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Kubika status byanze.");
+    }
+
+    setOrders((prev) =>
+      prev.map((order) =>
+        order.id === orderId
+          ? {
+              ...order,
+              status: "YANZWE N'UMUCURUZI",
+              rejectionReason: reason.trim(),
+              rejectedAt: new Date().toLocaleDateString("rw-RW"),
             }
           : order
       )
     );
 
     alert(
-      "KOMANDE YANZWE.\n\n" +
-        "Status: YANZWE N'UMUHUZA\n\n" +
-        "IMPAMVU: " +
-        reason.trim()
+      "KOMANDE YANZWE kandi status ibitswe muri PostgreSQL.\n\n" +
+      "IMPAMVU: " + reason.trim()
     );
-  };
+  } catch (error) {
+    console.error("REJECT ORDER ERROR:", error);
+    alert("KOMANDE NTIYABASHIJE KUBIKWA. Reba backend kuri port 5001.");
+  }
+};
 
   /*
    * =========================================================
@@ -1724,11 +2363,12 @@ const handleApproveOrder = (orderId) => {
   const handleStartDelivery = async (orderId) => {
   try {
     const response = await fetch(
-      `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
+      `http://localhost:5001/api/orders/${orderId}/status`,
       {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
+            Authorization: `Bearer ${sessionStorage.getItem("gurisha_token")}`,
         },
         body: JSON.stringify({
           status: "TEGEREJE DELIVERY",
@@ -1747,7 +2387,7 @@ const handleApproveOrder = (orderId) => {
     setOrders((prev) =>
       prev.map((order) =>
         order.id === orderId &&
-        order.status === "YEMEJWE N'UMUHUZA"
+        order.status === "YEMEJWE N'UMUCURUZI"
           ? {
               ...order,
               status: "TEGEREJE DELIVERY",
@@ -1779,11 +2419,12 @@ const handleApproveOrder = (orderId) => {
   const handleSendDelivery = async (orderId) => {
   try {
     const response = await fetch(
-      `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
+      `http://localhost:5001/api/orders/${orderId}/status`,
       {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
+            Authorization: `Bearer ${sessionStorage.getItem("gurisha_token")}`,
         },
         body: JSON.stringify({
           status: "YOHEREJWE",
@@ -1834,11 +2475,12 @@ const handleApproveOrder = (orderId) => {
   const handleDeliveryArrived = async (orderId) => {
     try {
       const response = await fetch(
-        `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
+        `http://localhost:5001/api/orders/${orderId}/status`,
         {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${sessionStorage.getItem("gurisha_token")}`,
           },
           body: JSON.stringify({
             status: "YAHAGEZE",
@@ -1889,11 +2531,12 @@ const handleApproveOrder = (orderId) => {
     const handleBuyerReceivedProduct = async (orderId) => {
     try {
       const response = await fetch(
-        `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
+        `http://localhost:5001/api/orders/${orderId}/status`,
         {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${sessionStorage.getItem("gurisha_token")}`,
           },
           body: JSON.stringify({
             status: "YAKIRIWE N'UMUGUZI",
@@ -1912,7 +2555,7 @@ const handleApproveOrder = (orderId) => {
       setOrders((prev) =>
         prev.map((order) =>
           order.id === orderId &&
-          order.status === "YAHAGEZE"
+          order.status === "YOHEREJWE"
             ? {
                 ...order,
                 status: "YAKIRIWE N'UMUGUZI",
@@ -1964,28 +2607,28 @@ const pendingProducts =
     orders.filter(
       (order) =>
         order.status ===
-        "TEGEREJE UMUHUZA"
+        "TEGEREJE UMUCURUZI"
     );
 
   const approvedOrders =
     orders.filter(
       (order) =>
         order.status ===
-        "YEMEJWE N'UMUHUZA"
+        "YEMEJWE N'UMUCURUZI"
     );
 
   const rejectedOrders =
     orders.filter(
       (order) =>
         order.status ===
-        "YANZWE N'UMUHUZA"
+        "YANZWE N'UMUCURUZI"
     );
 
   const deliveryOrders =
     orders.filter(
       (order) =>
         order.status ===
-          "YEMEJWE N'UMUHUZA" ||
+          "YEMEJWE N'UMUCURUZI" ||
         order.status ===
           "TEGEREJE DELIVERY" ||
         order.status ===
@@ -2020,7 +2663,7 @@ const pendingProducts =
 
     if (
       status ===
-      "YANZWE N'UMUHUZA"
+      "YANZWE N'UMUCURUZI"
     ) {
       return {
         ...styles.status,
@@ -2115,6 +2758,18 @@ const pendingProducts =
 
 <div>
   <strong>
+    Itariki yashyiriweho ku isoko:
+  </strong>
+  <br />
+  {
+    product.created_at
+      ? new Date(product.created_at).toLocaleDateString("rw-RW")
+      : product.createdAt || "-"
+  }
+</div>
+
+<div>
+  <strong>
     Ubwoko:
   </strong>
   <br />
@@ -2181,6 +2836,99 @@ const pendingProducts =
         </div>
       )}
 
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "16px" }}>
+        <button
+          type="button"
+          onClick={() => {
+            const doc = new jsPDF();
+            const details = [
+              "GURISHA UMUSARURO WAWE",
+              `Umusaruro: ${product.name || ""}`,
+              `Ubwoko: ${product.type || ""}`,
+              `Umuhinzi: ${product.farmer_name || ""}`,
+              `Telefoni: ${product.farmer_phone || ""}`,
+              `Ingano: ${product.quantity || ""} ${product.unit || ""}`,
+              `Igiciro: ${product.price || ""}`,
+              `Intara: ${product.province || ""}`,
+              `Akarere: ${product.district || ""}`,
+              `Umurenge: ${product.sector || ""}`,
+              `Akagari: ${product.cell || ""}`,
+              `Umudugudu: ${product.village || ""}`,
+              `Status: ${product.status || ""}`,
+            ];
+            doc.setFontSize(12);
+            doc.text(details, 15, 20);
+            doc.save(`Umusaruro_${product.id}.pdf`);
+          }}
+        >
+          DOWNLOAD PDF
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const rows = [
+              ["Izina", "Ubwoko", "Umuhinzi", "Telefoni", "Ingano", "Unit", "Igiciro", "Intara", "Akarere", "Umurenge", "Akagari", "Umudugudu", "Status"],
+              [
+                product.name, product.type, product.farmer_name,
+                product.farmer_phone, product.quantity, product.unit,
+                product.price, product.province, product.district,
+                product.sector, product.cell, product.village, product.status
+              ]
+            ];
+            const csv = "\uFEFF" + rows.map(row =>
+              row.map(value => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")
+            ).join("\r\n");
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `Umusaruro_${product.id}.csv`;
+            link.click();
+            URL.revokeObjectURL(url);
+          }}
+        >
+          DOWNLOAD EXCEL
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const message = [
+              "GURISHA UMUSARURO WAWE",
+              `Umusaruro: ${product.name || ""}`,
+              `Ubwoko: ${product.type || ""}`,
+              `Umuhinzi: ${product.farmer_name || ""}`,
+              `Telefoni: ${product.farmer_phone || ""}`,
+              `Ingano: ${product.quantity || ""} ${product.unit || ""}`,
+              `Igiciro: ${product.price || ""}`,
+              `Aho uherereye: ${product.district || ""}, ${product.sector || ""}`,
+            ].join("\n");
+            window.open(
+              `https://wa.me/?text=${encodeURIComponent(message)}`,
+              "_blank"
+            );
+          }}
+        >
+          SHARE WHATSAPP
+        </button>
+
+        <button
+          type="button"
+          onClick={async () => {
+            const link = `${window.location.origin}${window.location.pathname}#product-${product.id}`;
+            try {
+              await navigator.clipboard.writeText(link);
+              alert("LINK YAKOPOROWE.");
+            } catch (error) {
+              alert("Ntibyashobotse gukoporora link. Gerageza ukoreshe browser yawe.");
+            }
+          }}
+        >
+          COPY LINK
+        </button>
+      </div>
+
       {action && (
         <div
           style={{
@@ -2193,9 +2941,397 @@ const pendingProducts =
     </div>
   );
 
-  if (page === "home") {
+  const handleOpenAgent = async () => {
+    try {
+      const response = await fetch(
+        "http://localhost:5001/api/intermediary-profile"
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "KUBONA UMWIRONDORO BYANZE.");
+      }
+
+      const profile = data.profile || emptyIntermediaryProfile;
+      const savedProvince =
+        profile.province ||
+        Object.keys(districtsByProvince).find((province) =>
+          (districtsByProvince[province] || []).includes(profile.district)
+        ) ||
+        "";
+
+      setIntermediaryProfile({
+        ...emptyIntermediaryProfile,
+        ...profile,
+        province: savedProvince,
+      });
+
+      const fields = [
+        "full_name", "phone", "work_place", "province",
+        "district", "sector", "cell", "village"
+      ];
+
+      const profileComplete = fields.every(
+        (field) => String(profile[field] || "").trim() !== ""
+      );
+
+      setPage(profileComplete ? "agent" : "intermediary-profile");
+    } catch (error) {
+      console.error("LOAD INTERMEDIARY PROFILE ERROR:", error);
+      alert("NTABWO DUSHOBOYE KUBONA UMWIRONDORO.\n\nReba niba backend iri gukora.");
+    }
+  };
+
+  const handleSaveIntermediaryProfile = async (e) => {
+    e.preventDefault();
+
+    const fields = [
+      "full_name", "phone", "work_place",
+      "district", "sector", "cell", "village"
+    ];
+
+    const complete = fields.every(
+      (field) => String(intermediaryProfile[field] || "").trim() !== ""
+    );
+
+    if (!complete) {
+      alert("UZUZA AMAKURU YOSE Y'UMWIRONDORO.");
+      return;
+    }
+
+    setProfileSaving(true);
+
+    try {
+      const response = await fetch(
+        "http://localhost:5001/api/intermediary-profile",
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(intermediaryProfile)
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "KUBIKA UMWIRONDORO BYANZE.");
+      }
+
+      setIntermediaryProfile(data.profile);
+      alert("UMWIRONDORO WABITSWE NEZA.");
+      setPage("agent");
+    } catch (error) {
+      console.error("SAVE INTERMEDIARY PROFILE ERROR:", error);
+      alert(error.message || "KUBIKA UMWIRONDORO BYANZE.");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  if (page === "admin") {
+    return <AdminDashboard onBack={() => setPage("home")} />;
+  }
+  if (page === "register") {
     return (
       <div style={styles.page}>
+        <main style={{ ...styles.container, maxWidth: "520px", margin: "40px auto" }}>
+
+          <h1 style={{
+            ...styles.title,
+            textAlign: "center",
+            fontSize: "25px",
+            fontWeight: "800",
+            margin: 0,
+          }}>
+            GURISHA UMUSARURO WAWE
+          </h1>
+
+          <h2 style={{ textAlign: "center" }}>
+            FUNGURA KONTI NSHYA
+          </h2>
+
+          <form onSubmit={handleRegister}
+            style={{ display: "grid", gap: "12px" }}>
+
+            <label>Amazina yose</label>
+            <input
+              type="text"
+              required
+              value={registerFullName}
+              onChange={(e) => setRegisterFullName(e.target.value)}
+              placeholder="Andika amazina yawe"
+              style={{ padding: "14px", borderRadius: "8px" }}
+            />
+
+            <label>Telefoni</label>
+            <input
+              type="tel"
+              required
+              value={registerPhone}
+              onChange={(e) => setRegisterPhone(e.target.value)}
+              placeholder="Andika telefoni yawe"
+              style={{ padding: "14px", borderRadius: "8px" }}
+            />
+
+            <label>Ijambo ry'ibanga</label>
+            <input
+              type="password"
+              required
+              minLength={8}
+              value={registerPassword}
+              onChange={(e) => setRegisterPassword(e.target.value)}
+              placeholder="Nibura inyuguti 8"
+              style={{ padding: "14px", borderRadius: "8px" }}
+            />
+
+            <label>Hitamo ubwoko bwa konti</label>
+            <select
+              required
+              value={registerRole}
+              onChange={(e) => setRegisterRole(e.target.value)}
+              style={{ padding: "14px", borderRadius: "8px" }}
+            >
+              <option value="UMUHINZI">UMUHINZI</option>
+              <option value="UMWOROZI">UMWOROZI</option>
+              <option value="UMUGUZI">UMUGUZI</option>
+              <option value="UMUCURUZI">UMUCURUZI</option>
+            </select>
+
+            {registerRole === "UMUCURUZI" && (() => {
+  const provinces = RWANDA_LOCATIONS.provinces || [];
+  const districts = RWANDA_LOCATIONS.districts || [];
+  const sectors = RWANDA_LOCATIONS.sectors || [];
+  const cells = RWANDA_LOCATIONS.cells || [];
+  const villages = RWANDA_LOCATIONS.villages || [];
+
+  const getName = (item) =>
+    item?.name || item?.name_rw || item?.label || item?.province_name ||
+    item?.district_name || item?.sector_name || item?.cell_name ||
+    item?.village_name || "";
+
+  const getCode = (item) =>
+    String(item?.code ?? item?.id ?? item?.value ?? "");
+
+  const getParent = (item) =>
+    String(item?.parentCode ?? item?.parent_code ?? item?.parent_id ??
+      item?.province_code ?? item?.district_code ?? item?.sector_code ??
+      item?.cell_code ?? "");
+
+  const province = provinces.find(x => getName(x) === registerProvince);
+  const district = districts.find(x => getName(x) === registerDistrict);
+  const sector = sectors.find(x => getName(x) === registerSector);
+  const cell = cells.find(x => getName(x) === registerCell);
+
+  const children = (items, parent) => {
+    if (!parent) return [];
+    return items.filter(x => getParent(x) === getCode(parent));
+  };
+
+  const districtOptions = children(districts, province);
+  const sectorOptions = children(sectors, district);
+  const cellOptions = children(cells, sector);
+  const villageOptions = children(villages, cell);
+
+  const selectStyle = {
+    padding: "14px",
+    borderRadius: "8px",
+    width: "100%",
+    minHeight: "48px",
+    border: "1px solid #ced4da",
+    backgroundColor: "#ffffff",
+    color: "#212529",
+    fontSize: "16px"
+  };
+
+  return (
+    <>
+      <label>INTARA</label>
+      <select required value={registerProvince} style={selectStyle}
+        onChange={e => {
+          setRegisterProvince(e.target.value);
+          setRegisterDistrict("");
+          setRegisterSector("");
+          setRegisterCell("");
+          setRegisterVillage("");
+        }}>
+        <option value="">-- Hitamo Intara --</option>
+        {provinces.map((x, i) => (
+          <option key={getCode(x) || i} value={getName(x)}>
+            {getName(x)}
+          </option>
+        ))}
+      </select>
+
+      <label>AKARERE</label>
+      <select required value={registerDistrict} style={selectStyle}
+        disabled={!province}
+        onChange={e => {
+          setRegisterDistrict(e.target.value);
+          setRegisterSector("");
+          setRegisterCell("");
+          setRegisterVillage("");
+        }}>
+        <option value="">-- Hitamo Akarere --</option>
+        {districtOptions.map((x, i) => (
+          <option key={getCode(x) || i} value={getName(x)}>
+            {getName(x)}
+          </option>
+        ))}
+      </select>
+
+      <label>UMURENGE</label>
+      <select required value={registerSector} style={selectStyle}
+        disabled={!district}
+        onChange={e => {
+          setRegisterSector(e.target.value);
+          setRegisterCell("");
+          setRegisterVillage("");
+        }}>
+        <option value="">-- Hitamo Umurenge --</option>
+        {sectorOptions.map((x, i) => (
+          <option key={getCode(x) || i} value={getName(x)}>
+            {getName(x)}
+          </option>
+        ))}
+      </select>
+
+      <label>AKAGARI</label>
+      <select required value={registerCell} style={selectStyle}
+        disabled={!sector}
+        onChange={e => {
+          setRegisterCell(e.target.value);
+          setRegisterVillage("");
+        }}>
+        <option value="">-- Hitamo Akagari --</option>
+        {cellOptions.map((x, i) => (
+          <option key={getCode(x) || i} value={getName(x)}>
+            {getName(x)}
+          </option>
+        ))}
+      </select>
+
+      <label>UMUDUGUDU</label>
+      <select required value={registerVillage} style={selectStyle}
+        disabled={!cell}
+        onChange={e => setRegisterVillage(e.target.value)}>
+        <option value="">-- Hitamo Umudugudu --</option>
+        {villageOptions.map((x, i) => (
+          <option key={getCode(x) || i} value={getName(x)}>
+            {getName(x)}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+})()}
+
+            {registerError && (
+              <p style={{ color: "red", fontWeight: "bold" }}>
+                {registerError}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={registerLoading}
+              style={styles.menuButton}
+            >
+              {registerLoading ? "TURI GUKORA KONTI..." : "FUNGURA KONTI"}
+            </button>
+
+          </form>
+
+          <button
+            type="button"
+            onClick={() => setPage("login")}
+            style={{ ...styles.secondaryButton, marginTop: "16px" }}
+          >
+            NSANGANYWE KONTI - INJIRA
+          </button>
+
+        </main>
+      </div>
+    );
+  }
+  if (page === "login") {
+    return (
+      <div style={styles.page}>
+        <main style={{ ...styles.container, maxWidth: "480px", margin: "60px auto" }}>
+          <h1 style={{ ...styles.title, textAlign: "center" }}>
+            GURISHA UMUSARURO WAWE
+          </h1>
+
+          <h2 style={{ textAlign: "center" }}>KWINJIRA MURI KONTI</h2>
+
+          <form onSubmit={handleLogin} style={{ display: "grid", gap: "16px" }}>
+            <label>Telefoni</label>
+            <input
+              type="tel"
+              value={loginPhone}
+              onChange={(e) => setLoginPhone(e.target.value)}
+              placeholder="Andika telefoni yawe"
+              required
+              style={{ padding: "14px", fontSize: "17px", borderRadius: "8px" }}
+            />
+
+            <label>Ijambo ry'ibanga</label>
+            <input
+              type="password"
+              value={loginPassword}
+              onChange={(e) => setLoginPassword(e.target.value)}
+              placeholder="Andika ijambo ry'ibanga"
+              required
+              style={{ padding: "14px", fontSize: "17px", borderRadius: "8px" }}
+            />
+
+            {loginError && (
+              <p style={{ color: "red", fontWeight: "bold" }}>
+                {loginError}
+              </p>
+            )}
+
+            <button type="submit" disabled={loginLoading} style={{ ...styles.menuButton, backgroundColor: "#198754", color: "#FFFFFF" }}>
+              {loginLoading ? "TURI KWINJIZA..." : "INJIRA"}
+            </button>
+          </form>
+          <button
+            type="button"
+            onClick={() => {
+              setRegisterError("");
+              setPage("register");
+            }}
+            style={{ ...styles.menuButton, marginTop: "14px", backgroundColor: "#0D6EFD", color: "#FFFFFF" }}
+          >
+            FUNGURA KONTI NSHYA
+          </button>
+
+          <button
+            onClick={() => setPage("home")}
+            style={{ ...styles.secondaryButton, marginTop: "18px", backgroundColor: "#495057", color: "#FFFFFF" }}
+          >
+            AHABANZA
+          
+          </button>
+        </main>
+      </div>
+    );
+  }
+
+  if (page === "home") {
+    return (
+      <div
+        style={{
+          ...styles.page,
+          minHeight: "100vh",
+          backgroundColor: "#173b27",
+          backgroundImage: "linear-gradient(rgba(0, 35, 15, 0.55), rgba(0, 35, 15, 0.72)), url('/images/hero-agriculture.png')",
+          backgroundSize: "55% auto",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          backgroundAttachment: "fixed",
+        }}
+      >
         <header
           style={{
             ...styles.header,
@@ -2209,14 +3345,22 @@ const pendingProducts =
             </h1>
 
             <p style={styles.subtitle}>
-              UBUHINZI / UBWOROZI / ISOKO
+              <span style={{ color: "#32CD32" }}>ABAHINZI</span>{" / "}<span style={{ color: "#FFD700" }}>ABOROZI</span>{" / "}<span style={{ color: "#38BDF8" }}>ABAGUZI</span>{" / "}<span style={{ color: "#FF8C00" }}>ISOKO</span>
             </p>
           </div>
         </header>
 
-        <main style={styles.container}>
-          <div style={styles.card}>
-            <h2>Murakaza neza</h2>
+        <main style={{
+          ...styles.container,
+          display: "flex",
+          flexDirection: "row",
+          minHeight: "100vh",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "24px",
+        }}>
+          <div style={{ ...styles.card, flex: "1 1 0", maxWidth: "300px", marginTop: "0", padding: "20px" }}>
+            <h2 style={{ fontSize: "22px", marginBottom: "10px", color: "#000000", fontWeight: "bold" }}>MURAKAZA NEZA</h2>
 
             <p>
               Guhuza abahinzi,
@@ -2230,32 +3374,33 @@ const pendingProducts =
           <div style={{
   ...styles.menu,
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: "22px",
-  marginTop: "28px",
+  gridTemplateColumns: "minmax(0, 1fr)",
+  flex: "1 1 0",
+  maxWidth: "300px",
+  gap: "8px",
+  marginTop: "0",
 }}>
   <button
     style={{
       ...styles.menuButton,
       backgroundColor: "#218838",
       color: "#ffffff",
-      padding: "28px 20px",
-      minHeight: "160px",
+      padding: "5px 4px", minHeight: "48px",
       border: "none",
-      borderRadius: "18px",
-      fontSize: "23px",
+      borderRadius: "8px",
+      fontSize: "20px",
       fontWeight: "bold",
-      lineHeight: "1.8",
+      lineHeight: "1.2",
       cursor: "pointer",
       boxShadow: "0 5px 14px rgba(0,0,0,0.15)",
     }}
-    onClick={() => setPage("farmer")}
+    onClick={() => setPage("login")}
   >
-    <span style={{fontSize: "38px"}}>🌱</span>
+    
     <br />
     UBWOROZI / UMUHINZI
     <br />
-    <small style={{fontSize: "15px", fontWeight: "normal"}}>
+    <small style={{fontSize: "16px", fontWeight: "normal"}}>
       Shyiraho umusaruro
     </small>
   </button>
@@ -2265,23 +3410,22 @@ const pendingProducts =
       ...styles.menuButton,
       backgroundColor: "#f07818",
       color: "#ffffff",
-      padding: "28px 20px",
-      minHeight: "160px",
+      padding: "5px 4px", minHeight: "48px",
       border: "none",
-      borderRadius: "18px",
-      fontSize: "23px",
+      borderRadius: "8px",
+      fontSize: "20px",
       fontWeight: "bold",
-      lineHeight: "1.8",
+      lineHeight: "1.2",
       cursor: "pointer",
       boxShadow: "0 5px 14px rgba(0,0,0,0.15)",
     }}
-    onClick={() => setPage("agent")}
+    onClick={() => setPage("login")}
   >
-    <span style={{fontSize: "38px"}}>🤝</span>
+    
     <br />
-    UMUHUZA
+    UMUCURUZI
     <br />
-    <small style={{fontSize: "15px", fontWeight: "normal"}}>
+    <small style={{fontSize: "16px", fontWeight: "normal"}}>
       Genzura kandi wemeze
     </small>
   </button>
@@ -2291,27 +3435,49 @@ const pendingProducts =
       ...styles.menuButton,
       backgroundColor: "#087ff5",
       color: "#ffffff",
-      padding: "28px 20px",
-      minHeight: "160px",
+      padding: "5px 4px", minHeight: "48px",
       border: "none",
-      borderRadius: "18px",
-      fontSize: "23px",
+      borderRadius: "8px",
+      fontSize: "20px",
       fontWeight: "bold",
-      lineHeight: "1.8",
+      lineHeight: "1.2",
       cursor: "pointer",
       boxShadow: "0 5px 14px rgba(0,0,0,0.15)",
     }}
-    onClick={() => setPage("buyer")}
+    onClick={() => setPage("login")}
   >
-    <span style={{fontSize: "38px"}}>🛒</span>
+    
     <br />
     UMUGUZI
     <br />
-    <small style={{fontSize: "15px", fontWeight: "normal"}}>
+    <small style={{fontSize: "16px", fontWeight: "normal"}}>
       Shaka umusaruro
     </small>
   </button>
-</div>
+
+  <button
+    style={{
+      ...styles.menuButton,
+      backgroundColor: "#123b63",
+      color: "#ffffff",
+      padding: "5px 4px", minHeight: "48px",
+      border: "none",
+      borderRadius: "8px",
+      fontSize: "20px",
+      fontWeight: "bold",
+      lineHeight: "1.2",
+      cursor: "pointer",
+      boxShadow: "0 5px 14px rgba(0,0,0,0.15)",
+    }}
+    onClick={() => setPage("admin")}
+  >
+    <br />
+    ADMIN
+    <br />
+    <small style={{fontSize: "16px", fontWeight: "normal"}}>
+      Ubuyobozi bwa system
+    </small>
+  </button></div>
 </main>
       </div>
     );
@@ -2339,7 +3505,7 @@ const pendingProducts =
                 textAlign: "center",
               }}
             >
-              UBWOROZI / UMUHINZI
+              DASHBOARD Y'UMUHINZI N'UMWOROZI
             </h1>
 
             <p style={styles.subtitle}>
@@ -2353,11 +3519,9 @@ const pendingProducts =
               position: "absolute",
               left: "24px",
             }}
-            onClick={() =>
-              setPage("home")
-            }
+            onClick={handleLogout}
           >
-            ← AHABANZA
+            &#8592; AHABANZA
           </button>
         </header>
 
@@ -2404,7 +3568,7 @@ const pendingProducts =
                   {" "}
                   NTABWO WAGENZUWE
                 </strong>
-                . UMUHUZA ni we uzawugenzura.
+                . UMUCURUZI ni we uzawugenzura.
               </div>
 
               <div style={styles.grid}>
@@ -2883,22 +4047,288 @@ const pendingProducts =
                 UMUSARURO WANJYE
               </h2>
 
+              <input
+                type="search"
+                value={farmerSearch}
+                onChange={(e) => setFarmerSearch(e.target.value)}
+                placeholder="SHAKISHA UMUSARURO, UBWOKO, STATUS..."
+                style={{ width: "100%", padding: "14px", marginBottom: "15px", border: "1px solid #94a3b8", borderRadius: "10px", fontSize: "16px", boxSizing: "border-box" }}
+              />
+
               {myProducts.length === 0 ? (
                 <div style={styles.card}>
                   Nta musaruro urabikwa.
                 </div>
               ) : (
-                myProducts.map(
+                myProducts.filter((product) => matchesProductSearch(product, farmerSearch)).map(
                   (product) => (
                     <ProductCard
                       key={product.id}
                       product={product}
+                      action={
+                        product.is_sold ? (
+                          <div style={{ background: "#fee2e2", color: "#991b1b", padding: "12px", borderRadius: "8px", fontWeight: "bold", textAlign: "center" }}>
+                            WAGURISHIJE
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gap: "10px" }}>
+                            {product.offer_status === "PENDING" && (
+                              <div style={{ background: "#fef3c7", color: "#92400e", padding: "12px", borderRadius: "8px", textAlign: "center" }}>
+                                <strong>IGICIRO UMUCURUZI YAGUHAYE</strong>
+                                <div style={{ fontSize: "20px", fontWeight: "bold" }}>
+                                  {Number(product.offered_price).toLocaleString("en-US")} RWF
+                                </div>
+                                <button type="button" onClick={() => handleOfferResponse(product, "ACCEPTED")} style={{ width: "100%", padding: "10px", marginTop: "8px", background: "#15803d", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
+                                  NEMEYE IGICIRO
+                                </button>
+                                <button type="button" onClick={() => handleOfferResponse(product, "REJECTED")} style={{ width: "100%", padding: "10px", marginTop: "8px", background: "#b91c1c", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
+                                  NANZE IGICIRO
+                                </button>
+                              </div>
+                            )}
+                            {product.offer_status === "ACCEPTED" && (
+                              <div style={{ background: "#dcfce7", color: "#166534", padding: "12px", borderRadius: "8px", textAlign: "center", fontWeight: "bold" }}>
+                                WEMEYE IGICIRO: {Number(product.offered_price).toLocaleString("en-US")} RWF
+                              </div>
+                            )}
+                            {product.offer_status === "REJECTED" && (
+                              <div style={{ background: "#fee2e2", color: "#991b1b", padding: "12px", borderRadius: "8px", textAlign: "center", fontWeight: "bold" }}>
+                                WANZE IGICIRO CYA UMUCURUZI
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleMarkProductSold(product)}
+                              style={{ width: "100%", padding: "12px", background: "#b91c1c", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}
+                            >
+                              NAGURISHIJE
+                            </button>
+                          </div>
+                        )
+                      }
                     />
                   )
                 )
               )}
             </div>
           )}
+        </main>
+      </div>
+    );
+  }
+
+  if (page === "intermediary-profile") {
+    return (
+      <div style={styles.page}>
+        <header style={{ ...styles.header, justifyContent: "center" }}>
+          <h1 style={styles.title}>UMWIRONDORO WA UMUCURUZI</h1>
+        </header>
+
+        <main style={{ ...styles.container, maxWidth: "650px" }}>
+          <div style={styles.card}>
+            <h2 style={{ textAlign: "center" }}>
+              AMAKURU YAWE
+            </h2>
+
+            <p style={{ textAlign: "center", color: "#475569" }}>
+              Banza wuzuze umwirondoro wawe kugira ngo ufungure Dashboard ya UMUCURUZI.
+            </p>
+
+            <form onSubmit={handleSaveIntermediaryProfile}>
+              {[
+                { key: "full_name", label: "IZINA" },
+                { key: "phone", label: "TELEFONI" },
+                { key: "work_place", label: "AHO URI GUKORERA (ADDRESS)" }
+              ].map((field) => (
+                <div key={field.key} style={{ marginBottom: "16px" }}>
+                  <label style={{
+                    display: "block",
+                    fontWeight: "bold",
+                    marginBottom: "7px"
+                  }}>
+                    {field.label}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={intermediaryProfile[field.key] || ""}
+                    onChange={(e) =>
+                      setIntermediaryProfile((previous) => ({
+                        ...previous,
+                        [field.key]: e.target.value
+                      }))
+                    }
+                    placeholder={field.label}
+                    style={{
+                      width: "100%",
+                      padding: "13px",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "9px",
+                      fontSize: "16px",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+              ))}
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", fontWeight: "bold", marginBottom: "7px" }}>
+                  INTARA
+                </label>
+                <select
+                  required
+                  style={styles.input}
+                  value={intermediaryProfile.province || ""}
+                  onChange={(e) =>
+                    setIntermediaryProfile((previous) => ({
+                      ...previous,
+                      province: e.target.value,
+                      district: "",
+                      sector: "",
+                      cell: "",
+                      village: ""
+                    }))
+                  }
+                >
+                  <option value="">Hitamo Intara</option>
+                  {Object.keys(districtsByProvince).map((province) => (
+                    <option key={province} value={province}>{province}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", fontWeight: "bold", marginBottom: "7px" }}>
+                  AKARERE
+                </label>
+                <select
+                  required
+                  style={styles.input}
+                  value={intermediaryProfile.district || ""}
+                  disabled={!intermediaryProfile.province}
+                  onChange={(e) =>
+                    setIntermediaryProfile((previous) => ({
+                      ...previous,
+                      district: e.target.value,
+                      sector: "",
+                      cell: "",
+                      village: ""
+                    }))
+                  }
+                >
+                  <option value="">Hitamo Akarere</option>
+                  {(districtsByProvince[intermediaryProfile.province] || []).map((district) => (
+                    <option key={district} value={district}>{district}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", fontWeight: "bold", marginBottom: "7px" }}>
+                  UMURENGE
+                </label>
+                <select
+                  required
+                  style={styles.input}
+                  value={intermediaryProfile.sector || ""}
+                  disabled={!intermediaryProfile.district}
+                  onChange={(e) =>
+                    setIntermediaryProfile((previous) => ({
+                      ...previous,
+                      sector: e.target.value,
+                      cell: "",
+                      village: ""
+                    }))
+                  }
+                >
+                  <option value="">Hitamo Umurenge</option>
+                  {profileSectors.map((sector) => (
+                    <option key={sector} value={sector}>{sector}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", fontWeight: "bold", marginBottom: "7px" }}>
+                  AKAGARI
+                </label>
+                <select
+                  required
+                  style={styles.input}
+                  value={intermediaryProfile.cell || ""}
+                  disabled={!intermediaryProfile.sector}
+                  onChange={(e) =>
+                    setIntermediaryProfile((previous) => ({
+                      ...previous,
+                      cell: e.target.value,
+                      village: ""
+                    }))
+                  }
+                >
+                  <option value="">Hitamo Akagari</option>
+                  {profileCells.map((cell) => (
+                    <option key={cell} value={cell}>{cell}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", fontWeight: "bold", marginBottom: "7px" }}>
+                  UMUDUGUDU
+                </label>
+                <select
+                  required
+                  style={styles.input}
+                  value={intermediaryProfile.village || ""}
+                  disabled={!intermediaryProfile.cell}
+                  onChange={(e) =>
+                    setIntermediaryProfile((previous) => ({
+                      ...previous,
+                      village: e.target.value
+                    }))
+                  }
+                >
+                  <option value="">Hitamo Umudugudu</option>
+                  {profileVillages.map((village) => (
+                    <option key={village} value={village}>{village}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="submit"
+                disabled={profileSaving}
+                style={{
+                  width: "100%",
+                  padding: "15px",
+                  background: "#15803d",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "10px",
+                  fontSize: "17px",
+                  fontWeight: "bold",
+                  cursor: profileSaving ? "wait" : "pointer"
+                }}
+              >
+                {profileSaving ? "BIKA..." : "BIKA UMWIRONDORO"}
+              </button>
+            </form>
+
+            <button
+              type="button"
+              onClick={() => setPage("home")}
+              style={{
+                width: "100%",
+                marginTop: "12px",
+                padding: "12px",
+                border: "1px solid #cbd5e1",
+                borderRadius: "9px",
+                background: "white",
+                cursor: "pointer"
+              }}
+            >
+              Â AHABANZA
+            </button>
+          </div>
         </main>
       </div>
     );
@@ -2926,7 +4356,7 @@ const pendingProducts =
                 textAlign: "center",
               }}
             >
-              UMUHUZA
+              DASHBOARD Y'UMUCURUZI
             </h1>
 
             <p style={styles.subtitle}>
@@ -2941,99 +4371,61 @@ const pendingProducts =
               position: "absolute",
               left: "24px",
             }}
-            onClick={() =>
-              setPage("home")
-            }
+            onClick={handleLogout}
           >
-            ← AHABANZA
+            &#8592; AHABANZA
           </button>
         </header>
 
         <main style={styles.container}>
           <div style={styles.menu}>
-            <button
-              style={styles.menuButton}
-              onClick={() =>
-                setShowPendingProducts(
-                  !showPendingProducts
-                )
-              }
-            >
-               UMUSARURO
-              UTARAGENZURWA (
-              {pendingProducts.length})
+            <button onClick={() => setShowPendingProducts(!showPendingProducts)}
+              style={{width:"100%",display:"flex",alignItems:"center",gap:"12px",padding:"14px",marginBottom:"10px",border:"1px solid #fed7aa",borderRadius:"12px",background:"#fff7ed",color:"#9a3412",fontWeight:"700",cursor:"pointer"}}>
+              
+              <span style={{flex:1,textAlign:"left"}}>UMUSARURO UTARAGENZURWA</span>
+              <span style={{background:"#ea580c",color:"white",padding:"5px 12px",borderRadius:"20px"}}>{pendingProducts.length}</span>
             </button>
 
-            <button
-              style={styles.menuButton}
-              onClick={() =>
-                setShowVerifiedProducts(
-                  !showVerifiedProducts
-                )
-              }
-            >
-              Â  WAGENZUWE - NTABWO
-              WEMEJWE (
-              {verifiedProducts.length})
+            <button onClick={() => setShowVerifiedProducts(!showVerifiedProducts)}
+              style={{width:"100%",display:"flex",alignItems:"center",gap:"12px",padding:"14px",marginBottom:"10px",border:"1px solid #fbcfe8",borderRadius:"12px",background:"#fdf2f8",color:"#9d174d",fontWeight:"700",cursor:"pointer"}}>
+              
+              <span style={{flex:1,textAlign:"left"}}>WEMEJWE</span>
+              <span style={{background:"#db2777",color:"white",padding:"5px 12px",borderRadius:"20px"}}>{verifiedProducts.length}</span>
             </button>
 
-            <button
-              style={styles.menuButton}
-              onClick={() =>
-                setShowApprovedProducts(
-                  !showApprovedProducts
-                )
-              }
-            >
-               UMUSARURO WEMEJWE (
-              {approvedProducts.length})
+            <button onClick={() => setShowApprovedProducts(!showApprovedProducts)}
+              style={{width:"100%",display:"flex",alignItems:"center",gap:"12px",padding:"14px",marginBottom:"10px",border:"1px solid #bbf7d0",borderRadius:"12px",background:"#f0fdf4",color:"#166534",fontWeight:"700",cursor:"pointer"}}>
+              
+              <span style={{flex:1,textAlign:"left"}}>WEMEJWE</span>
+              <span style={{background:"#16a34a",color:"white",padding:"5px 12px",borderRadius:"20px"}}>{approvedProducts.length}</span>
             </button>
 
-            <button
-              style={styles.menuButton}
-              onClick={() =>
-                setShowAgentOrders(
-                  !showAgentOrders
-                )
-              }
-            >
-               KOMANDE ZITEGEREJE (
-              {pendingOrders.length})
+            <button onClick={() => setShowAgentOrders(!showAgentOrders)}
+              style={{width:"100%",display:"flex",alignItems:"center",gap:"12px",padding:"14px",marginBottom:"10px",border:"1px solid #bfdbfe",borderRadius:"12px",background:"#eff6ff",color:"#1e40af",fontWeight:"700",cursor:"pointer"}}>
+              
+              <span style={{flex:1,textAlign:"left"}}>KOMANDE ZITEGEREJE</span>
+              <span style={{background:"#2563eb",color:"white",padding:"5px 12px",borderRadius:"20px"}}>{pendingOrders.length}</span>
             </button>
 
-            <button
-              style={styles.menuButton}
-              onClick={() =>
-                setShowApprovedOrders(
-                  !showApprovedOrders
-                )
-              }
-            >
-               KOMANDE ZEMEJWE (
-              {approvedOrders.length})
+            <button onClick={() => setShowApprovedOrders(!showApprovedOrders)}
+              style={{width:"100%",display:"flex",alignItems:"center",gap:"12px",padding:"14px",marginBottom:"10px",border:"1px solid #ddd6fe",borderRadius:"12px",background:"#f5f3ff",color:"#5b21b6",fontWeight:"700",cursor:"pointer"}}>
+              
+              <span style={{flex:1,textAlign:"left"}}>KOMANDE ZEMEJWE</span>
+              <span style={{background:"#7c3aed",color:"white",padding:"5px 12px",borderRadius:"20px"}}>{approvedOrders.length}</span>
             </button>
 
-            <button
-              style={styles.menuButton}
-              onClick={() =>
-                setShowRejectedOrders(
-                  !showRejectedOrders
-                )
-              }
-            >
-              {rejectedOrders.length})
+            <button onClick={() => setShowRejectedOrders(!showRejectedOrders)}
+              style={{width:"100%",display:"flex",alignItems:"center",gap:"12px",padding:"14px",marginBottom:"10px",border:"1px solid #fecaca",borderRadius:"12px",background:"#fef2f2",color:"#991b1b",fontWeight:"700",cursor:"pointer"}}>
+              
+              <span style={{flex:1,textAlign:"left"}}>KOMANDE ZANZWE</span>
+              <span style={{background:"#dc2626",color:"white",padding:"5px 12px",borderRadius:"20px"}}>{rejectedOrders.length}</span>
             </button>
 
-            <button
-              style={styles.menuButton}
-              onClick={() =>
-                setShowDelivery(
-                  !showDelivery
-                )
-              }
-            >
-               DELIVERY (
-              {deliveryOrders.length})
+            <button onClick={() => setShowDelivery(!showDelivery)}
+              style={{width:"100%",display:"flex",alignItems:"center",gap:"12px",padding:"14px",marginBottom:"10px",border:"1px solid #99f6e4",borderRadius:"12px",background:"#f0fdfa",color:"#115e59",fontWeight:"700",cursor:"pointer"}}>
+              
+              <span style={{flex:1,textAlign:"left"}}>DELIVERY</span>
+              <span style={{background:"#0d9488",color:"white",padding:"5px 12px",borderRadius:"20px"}}>{deliveryOrders.length}</span>
             </button>
           </div>
 
@@ -3044,6 +4436,14 @@ const pendingProducts =
                 UTARAGENZURWA
               </h2>
 
+              <input
+                type="search"
+                value={agentSearch}
+                onChange={(e) => setAgentSearch(e.target.value)}
+                placeholder="SHAKISHA UMUSARURO, UMUHINZI, TELEFONI..."
+                style={{ width: "100%", padding: "14px", marginBottom: "15px", border: "1px solid #94a3b8", borderRadius: "10px", fontSize: "16px", boxSizing: "border-box" }}
+              />
+
               {pendingProducts.length ===
               0 ? (
                 <div style={styles.card}>
@@ -3051,24 +4451,24 @@ const pendingProducts =
                   igenzura.
                 </div>
               ) : (
-                pendingProducts.map(
+                pendingProducts.filter((product) => matchesProductSearch(product, agentSearch)).map(
                   (product) => (
                     <ProductCard
                       key={product.id}
                       product={product}
                       action={
-                        <button
-                          style={
-                            styles.warningButton
-                          }
-                          onClick={() =>
-                            handleVerifyProduct(
-                              product.id
-                            )
-                          }
-                        >
-                          GENZURA
-                        </button>
+                        product.is_sold ? (
+                          <div style={{ background: "#fee2e2", color: "#991b1b", padding: "12px", borderRadius: "8px", fontWeight: "bold", textAlign: "center" }}>
+                            WAGURISHIJE
+                          </div>
+                        ) : (
+                          <button
+                            style={styles.warningButton}
+                            onClick={() => handleVerifyProduct(product.id)}
+                          >
+                            GENZURA
+                          </button>
+                        )
                       }
                     />
                   )
@@ -3084,6 +4484,14 @@ const pendingProducts =
                 WEMEJWE
               </h2>
 
+              <input
+                type="search"
+                value={agentSearch}
+                onChange={(e) => setAgentSearch(e.target.value)}
+                placeholder="SHAKISHA UMUSARURO, UMUHINZI, TELEFONI..."
+                style={{ width: "100%", padding: "14px", marginBottom: "15px", border: "1px solid #94a3b8", borderRadius: "10px", fontSize: "16px", boxSizing: "border-box" }}
+              />
+
               {verifiedProducts.length ===
               0 ? (
                 <div style={styles.card}>
@@ -3091,22 +4499,52 @@ const pendingProducts =
                   utegereje kwemezwa.
                 </div>
               ) : (
-                verifiedProducts.map(
+                verifiedProducts.filter((product) => matchesProductSearch(product, agentSearch)).map(
                   (product) => (
                     <ProductCard
                       key={product.id}
                       product={product}
                       action={
-                        <button
-                          style={styles.button}
-                          onClick={() =>
-                            handleApproveProduct(
-                              product.id
-                            )
-                          }
-                        >
-                          EMEZA UMUSARURO
-                        </button>
+                        product.is_sold ? (
+                          <div style={{ background: "#fee2e2", color: "#991b1b", padding: "12px", borderRadius: "8px", fontWeight: "bold", textAlign: "center" }}>
+                            WAGURISHIJE
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gap: "10px" }}>
+                            {product.offer_status === "PENDING" && (
+                              <div style={{ background: "#fef3c7", color: "#92400e", padding: "12px", borderRadius: "8px", textAlign: "center", fontWeight: "bold" }}>
+                                IGICIRO CYOHEREJWE: {Number(product.offered_price).toLocaleString("en-US")} RWF
+                                <div>TEGEREZA IGISUBIZO CY'UMUHINZI</div>
+                              </div>
+                            )}
+                            {product.offer_status === "ACCEPTED" && (
+                              <div style={{ background: "#dcfce7", color: "#166534", padding: "12px", borderRadius: "8px", textAlign: "center", fontWeight: "bold" }}>
+                                UMUHINZI YEMEYE IGICIRO: {Number(product.offered_price).toLocaleString("en-US")} RWF
+                              </div>
+                            )}
+                            {product.offer_status === "REJECTED" && (
+                              <div style={{ background: "#fee2e2", color: "#991b1b", padding: "12px", borderRadius: "8px", textAlign: "center", fontWeight: "bold" }}>
+                                UMUHINZI YANZE IGICIRO
+                              </div>
+                            )}
+                            {product.offer_status !== "PENDING" && product.offer_status !== "ACCEPTED" && (
+                              <button
+                                type="button"
+                                style={styles.button}
+                                onClick={() => handleOfferPrice(product)}
+                              >
+                                TANGA IGICIRO
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              style={styles.button}
+                              onClick={() => handleApproveProduct(product.id)}
+                            >
+                              EMEZA UMUSARURO
+                            </button>
+                          </div>
+                        )
                       }
                     />
                   )
@@ -3121,17 +4559,66 @@ const pendingProducts =
                 UMUSARURO WEMEJWE
               </h2>
 
+              <input
+                type="search"
+                value={agentSearch}
+                onChange={(e) => setAgentSearch(e.target.value)}
+                placeholder="SHAKISHA UMUSARURO, UMUHINZI, TELEFONI..."
+                style={{ width: "100%", padding: "14px", marginBottom: "15px", border: "1px solid #94a3b8", borderRadius: "10px", fontSize: "16px", boxSizing: "border-box" }}
+              />
+
               {approvedProducts.length ===
               0 ? (
                 <div style={styles.card}>
                   Nta musaruro wemejwe.
                 </div>
               ) : (
-                approvedProducts.map(
+                approvedProducts.filter((product) => matchesProductSearch(product, agentSearch)).map(
                   (product) => (
                     <ProductCard
                       key={product.id}
                       product={product}
+                      action={
+                        product.is_sold ? (
+                          <div style={{ background: "#fee2e2", color: "#991b1b", padding: "12px", borderRadius: "8px", fontWeight: "bold", textAlign: "center" }}>
+                            WAGURISHIJE
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gap: "10px" }}>
+                            {product.offer_status === "PENDING" && (
+                              <div style={{ background: "#fef3c7", color: "#92400e", padding: "12px", borderRadius: "8px", textAlign: "center" }}>
+                                <strong>IGICIRO UMUCURUZI YAGUHAYE</strong>
+                                <div style={{ fontSize: "20px", fontWeight: "bold" }}>
+                                  {Number(product.offered_price).toLocaleString("en-US")} RWF
+                                </div>
+                                <button type="button" onClick={() => handleOfferResponse(product, "ACCEPTED")} style={{ width: "100%", padding: "10px", marginTop: "8px", background: "#15803d", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
+                                  NEMEYE IGICIRO
+                                </button>
+                                <button type="button" onClick={() => handleOfferResponse(product, "REJECTED")} style={{ width: "100%", padding: "10px", marginTop: "8px", background: "#b91c1c", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>
+                                  NANZE IGICIRO
+                                </button>
+                              </div>
+                            )}
+                            {product.offer_status === "ACCEPTED" && (
+                              <div style={{ background: "#dcfce7", color: "#166534", padding: "12px", borderRadius: "8px", textAlign: "center", fontWeight: "bold" }}>
+                                WEMEYE IGICIRO: {Number(product.offered_price).toLocaleString("en-US")} RWF
+                              </div>
+                            )}
+                            {product.offer_status === "REJECTED" && (
+                              <div style={{ background: "#fee2e2", color: "#991b1b", padding: "12px", borderRadius: "8px", textAlign: "center", fontWeight: "bold" }}>
+                                WANZE IGICIRO CYA UMUCURUZI
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleMarkProductSold(product)}
+                              style={{ width: "100%", padding: "12px", background: "#b91c1c", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}
+                            >
+                              NAGURISHIJE
+                            </button>
+                          </div>
+                        )
+                      }
                     />
                   )
                 )
@@ -3144,6 +4631,14 @@ const pendingProducts =
               <h2>
                 KOMANDE ZITEGEREJE
               </h2>
+              <input
+                type="search"
+                value={agentSearch}
+                onChange={(e) => setAgentSearch(e.target.value)}
+                placeholder="SHAKISHA KOMANDE, UMUGUZI, UMUHINZI, TELEFONI, UMUSARURO, AHO UHEREREYE..."
+                style={{ width: "100%", padding: "14px", marginBottom: "15px", border: "1px solid #94a3b8", borderRadius: "10px", fontSize: "16px", boxSizing: "border-box" }}
+              />
+
 
               {pendingOrders.length ===
               0 ? (
@@ -3151,7 +4646,7 @@ const pendingProducts =
                   Nta KOMANDE ritegereje.
                 </div>
               ) : (
-                pendingOrders.map(
+                pendingOrders.filter((order) => !agentSearch.trim() || JSON.stringify(order).toLowerCase().includes(agentSearch.trim().toLowerCase())).map(
                   (order) => (
                     <div
                       key={order.id}
@@ -3400,6 +4895,14 @@ const pendingProducts =
               <h2>
                 KOMANDE ZEMEJWE
               </h2>
+              <input
+                type="search"
+                value={agentSearch}
+                onChange={(e) => setAgentSearch(e.target.value)}
+                placeholder="SHAKISHA KOMANDE, UMUGUZI, UMUHINZI, TELEFONI, UMUSARURO, AHO UHEREREYE..."
+                style={{ width: "100%", padding: "14px", marginBottom: "15px", border: "1px solid #94a3b8", borderRadius: "10px", fontSize: "16px", boxSizing: "border-box" }}
+              />
+
 
               {approvedOrders.length ===
               0 ? (
@@ -3407,7 +4910,7 @@ const pendingProducts =
                   Nta KOMANDE yemejwe.
                 </div>
               ) : (
-                approvedOrders.map(
+                approvedOrders.filter((order) => !agentSearch.trim() || JSON.stringify(order).toLowerCase().includes(agentSearch.trim().toLowerCase())).map(
                   (order) => (
                     <div
                       key={order.id}
@@ -3585,6 +5088,14 @@ const pendingProducts =
               <h2>
                 KOMANDE ZANZWE
               </h2>
+              <input
+                type="search"
+                value={agentSearch}
+                onChange={(e) => setAgentSearch(e.target.value)}
+                placeholder="SHAKISHA KOMANDE, UMUGUZI, UMUHINZI, TELEFONI, UMUSARURO, AHO UHEREREYE..."
+                style={{ width: "100%", padding: "14px", marginBottom: "15px", border: "1px solid #94a3b8", borderRadius: "10px", fontSize: "16px", boxSizing: "border-box" }}
+              />
+
 
               {rejectedOrders.length ===
               0 ? (
@@ -3592,7 +5103,7 @@ const pendingProducts =
                   Nta KOMANDE yanze.
                 </div>
               ) : (
-                rejectedOrders.map(
+                rejectedOrders.filter((order) => !agentSearch.trim() || JSON.stringify(order).toLowerCase().includes(agentSearch.trim().toLowerCase())).map(
                   (order) => (
                     <div
                       key={order.id}
@@ -3659,6 +5170,14 @@ const pendingProducts =
               <h2>
                  DELIVERY
               </h2>
+              <input
+                type="search"
+                value={agentSearch}
+                onChange={(e) => setAgentSearch(e.target.value)}
+                placeholder="SHAKISHA KOMANDE, UMUGUZI, UMUHINZI, TELEFONI, UMUSARURO, AHO UHEREREYE..."
+                style={{ width: "100%", padding: "14px", marginBottom: "15px", border: "1px solid #94a3b8", borderRadius: "10px", fontSize: "16px", boxSizing: "border-box" }}
+              />
+
 
               {deliveryOrders.length ===
               0 ? (
@@ -3666,7 +5185,7 @@ const pendingProducts =
                   Nta KOMANDE riri muri DELIVERY.
                 </div>
               ) : (
-                deliveryOrders.map(
+                deliveryOrders.filter((order) => !agentSearch.trim() || JSON.stringify(order).toLowerCase().includes(agentSearch.trim().toLowerCase())).map(
                   (order) => (
                     <div
                       key={order.id}
@@ -3905,7 +5424,7 @@ const pendingProducts =
                         }}
                       >
                         {order.status ===
-                          "YEMEJWE N'UMUHUZA" && (
+                          "YEMEJWE N'UMUCURUZI" && (
                           <button
                             style={
                               styles.button
@@ -4000,7 +5519,7 @@ const pendingProducts =
                 textAlign: "center",
               }}
             >
-              UMUGUZI
+              DASHBOARD Y'UMUGUZI
             </h1>
 
             <p style={styles.subtitle}>
@@ -4015,25 +5534,29 @@ const pendingProducts =
               position: "absolute",
               left: "24px",
             }}
-            onClick={() =>
-              setPage("home")
-            }
+            onClick={handleLogout}
           >
-            ← AHABANZA
+            &#8592; AHABANZA
           </button>
         </header>
 
         <main style={styles.container}>
           <div style={styles.menu}>
             <button
-              style={styles.menuButton}
+              style={{
+                ...styles.menuButton,
+                display: "block",
+                width: "min(100%, 420px)",
+                margin: "0 auto",
+                textAlign: "center",
+              }}
               onClick={() =>
                 setShowBuyerProducts(
                   !showBuyerProducts
                 )
               }
             >
-               SHAKA UMUSARURO
+              SHAKA UMUSARURO
             </button>
           </div>
 
@@ -4047,176 +5570,136 @@ const pendingProducts =
           </div>
 
           {showBuyerProducts && (
-            <div>
-              <h2>
-                UMUSARURO WEMEJWE
-              </h2>
+  <section style={{ background: "#f5f8f2", padding: "18px", borderRadius: "18px", marginTop: "18px" }}>
+    <div style={{ background: "#174d35", color: "white", padding: "24px", borderRadius: "16px", marginBottom: "20px" }}>
+      <div style={{ fontSize: "13px", letterSpacing: "2px", opacity: 0.85 }}>GURISHA UMUSARURO WAWE</div>
+      <h2 style={{ fontSize: "27px", margin: "10px 0" }}>UMUGUZI</h2>
+      <p style={{ margin: 0, lineHeight: 1.6 }}>Shaka umusaruro mwiza wemejwe, uhuze n'umuhinzi cyangwa umworozi, utange KOMANDE.</p>
+    </div>
 
-              {approvedProducts.length ===
-              0 ? (
-                <div style={styles.card}>
-                  Nta musaruro wemejwe
-                  uhari ubu.
+    <div style={{ background: "white", padding: "14px", borderRadius: "14px", marginBottom: "18px" }}>
+      <input
+        type="text"
+        value={buyerSearch}
+        onChange={(e) => setBuyerSearch(e.target.value)}
+        placeholder="Shakisha umusaruro..."
+        style={{ width: "100%", padding: "14px", border: "1px solid #dce5dc", borderRadius: "10px", fontSize: "15px", boxSizing: "border-box" }}
+      />
+    </div>
+
+    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "20px" }}>
+      {["BYOSE", "UBUHINZI", "UBWOROZI"].map((category) => (
+        <button
+          key={category}
+          type="button"
+          onClick={() => setBuyerCategory(category)}
+          style={{
+            padding: "10px 16px",
+            borderRadius: "22px",
+            border: "1px solid #174d35",
+            background: buyerCategory === category ? "#174d35" : "white",
+            color: buyerCategory === category ? "white" : "#174d35",
+            fontWeight: "bold",
+            cursor: "pointer"
+          }}
+        >
+          {category === "BYOSE" ? "Byose" : category}
+        </button>
+      ))}
+    </div>
+
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", gap: "10px" }}>
+      <h3 style={{ color: "#174d35", margin: 0 }}>UMUSARURO WEMEJWE</h3>
+      <span style={{ fontSize: "12px", color: "#55705d" }}>{approvedProducts.length} products</span>
+    </div>
+
+    {approvedProducts.length === 0 ? (
+      <div style={{ background: "white", padding: "25px", borderRadius: "14px", textAlign: "center" }}>
+        <div style={{ fontSize: "35px" }}></div>
+        Nta musaruro wemejwe uhari ubu.
+      </div>
+    ) : (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "15px" }}>
+        {approvedProducts
+          .filter((product) => {
+            if (Number(product.resale_price) <= 0) return false;
+            const search = buyerSearch.toLowerCase();
+            const searchable = [
+              product.name,
+              product.type,
+              product.farmer_name,
+              product.district,
+              product.sector,
+              product.cell,
+              product.village
+            ].join(" ").toLowerCase();
+
+            const matchesSearch = searchable.includes(search);
+            const matchesCategory =
+              buyerCategory === "BYOSE" ||
+              String(product.type || "").toUpperCase().includes(buyerCategory);
+
+            return matchesSearch && matchesCategory;
+          })
+          .map((product) => (
+            <article
+              key={product.id}
+              style={{ background: "white", borderRadius: "15px", overflow: "hidden", border: "1px solid #e1e9df", boxShadow: "0 3px 10px rgba(0,0,0,0.05)" }}
+            >
+              <div style={{ height: "125px", background: "linear-gradient(135deg, #dcefdc, #f3f7df)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px" }}>UMUSARURO</div>
+
+              <div style={{ padding: "15px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "6px" }}>
+                  <h3 style={{ margin: 0, color: "#203b2b", fontSize: "17px" }}>{product.name}</h3>
+                  <span style={{ background: product.is_sold ? "#fee2e2" : "#e2f4e7", color: product.is_sold ? "#991b1b" : "#176334", padding: "5px 8px", borderRadius: "15px", fontSize: "10px", fontWeight: "bold" }}>{product.is_sold ? "WAGURISHIJE" : "WEMEJWE"}</span>
                 </div>
-              ) : (
-                approvedProducts.map(
-                  (product) => (
-                    <div
-                      key={product.id}
-                      style={styles.card}
-                    >
-                      <div
-                        style={{
-                          ...styles.row,
-                          justifyContent:
-                            "space-between",
-                        }}
-                      >
-                        <h3
-                          style={{
-                            margin: 0,
-                          }}
-                        >
-                          {product.name}
-                        </h3>
 
-                        <span
-                          style={statusStyle(
-                            product.status
-                          )}
-                        >
-                          WEMEJWE
-                        </span>
-                      </div>
+                <p style={{ color: "#647568", fontSize: "13px", margin: "9px 0" }}>
+                  {product.type} | {product.quantity} {product.unit}
+                </p>
 
-                      <div
-                        style={{
-                          ...styles.grid,
-                          marginTop: "15px",
-                        }}
-                      >
-                        <div>
-                          <strong>
-                            Umuhinzi:
-                          </strong>
-                          <br />
-                          {
-                            product.farmer_name
-                          }
-                        </div>
+                <div style={{ color: "#174d35", fontSize: "19px", fontWeight: "bold", margin: "10px 0" }}>
+                  {product.resale_price} RWF 
+                </div>
 
-                        <div>
-                          <strong>
-                            Ubwoko:
-                          </strong>
-                          <br />
-                          {product.type}
-                        </div>
+                <div style={{ fontSize: "13px", color: "#59675d", lineHeight: 1.8 }}>
+                  <div>Umuhinzi/Umworozi: {product.farmer_name}</div>
+                  <div>Akarere: {product.district}, Umurenge: {product.sector}</div>
+                  <div>Akagari: {product.cell}, Umudugudu: {product.village}</div>
+                </div>
 
-                        <div>
-                          <strong>
-                            Ingano ihari:
-                          </strong>
-                          <br />
-                          {
-                            product.quantity
-                          }{" "}
-                          {product.unit}
-                        </div>
-
-                        <div>
-                          <strong>
-                            Igiciro:
-                          </strong>
-                          <br />
-                          {product.price ||
-                            "Ntabwo yashyizweho"}
-                        </div>
-
-                        <div>
-                          <strong>
-                            Intara:
-                          </strong>
-                          <br />
-                          {
-                            product.province
-                          }
-                        </div>
-
-                        <div>
-                          <strong>
-                            Akarere:
-                          </strong>
-                          <br />
-                          {
-                            product.district
-                          }
-                        </div>
-
-                        <div>
-                          <strong>
-                            Umurenge:
-                          </strong>
-                          <br />
-                          {product.sector}
-                        </div>
-
-                        <div>
-                          <strong>
-                            Akagari:
-                          </strong>
-                          <br />
-                          {product.cell}
-                        </div>
-
-                        <div>
-                          <strong>
-                            Umudugudu:
-                          </strong>
-                          <br />
-                          {product.village}
-                        </div>
-                      </div>
-
-                      <button
-                        style={{
-                          ...styles.button,
-                          marginTop: "18px",
-                        }}
-                        onClick={() => {
-                          setSelectedBuyerProduct(
-                            product
-                          );
-
-                          setBuyerOrder({
-                            buyerName: "",
-                            province: "",
-                            district: "",
-                            sector: "",
-                            cell: "",
-                            village: "",
-                            quantity: "",
-                            buyerPhone: "",
-                          });
-
-                          setBuyerSectors([]);
-                          setBuyerCells([]);
-                          setBuyerVillages([]);
-
-                          setShowOrderForm(
-                            true
-                          );
-                        }}
-                      >
-                        KOMANDE
-                      </button>
-                    </div>
-                  )
-                )
-              )}
-            </div>
-          )}
-
+                {!product.is_sold && (
+                <button
+                  type="button"
+                  style={{ width: "100%", marginTop: "14px", padding: "12px", background: "#174d35", color: "white", border: "none", borderRadius: "9px", fontWeight: "bold", cursor: "pointer" }}
+                  onClick={() => {
+                    setSelectedBuyerProduct(product);
+                    setBuyerOrder({
+                      buyerName: "",
+                      province: "",
+                      district: "",
+                      sector: "",
+                      cell: "",
+                      village: "",
+                      quantity: "",
+                      buyerPhone: "",
+                    });
+                    setBuyerSectors([]);
+                    setBuyerCells([]);
+                    setBuyerVillages([]);
+                    setShowOrderForm(true);
+                  }}
+                >
+                  KOMANDE
+                </button>
+                )}
+              </div>
+            </article>
+          ))}
+      </div>
+    )}
+  </section>
+)}
           {showOrderForm &&
             selectedBuyerProduct && (
               <form
@@ -4261,7 +5744,7 @@ const pendingProducts =
                     Igiciro:
                   </strong>{" "}
                   {
-                    selectedBuyerProduct.price ||
+                    selectedBuyerProduct.resale_price ||
                     "Ntabwo cyashyizweho"
                   }
                 </div>
@@ -4685,7 +6168,7 @@ const pendingProducts =
                         {order.status}
                       </p>
 
-                      {order.status === "YAHAGEZE" && (
+                      {["YOHEREJWE", "YAHAGEZE"].includes(order.status) && (
                         <button
                           type="button"
                           style={{
@@ -4743,6 +6226,62 @@ const pendingProducts =
 }
 
 export default App;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

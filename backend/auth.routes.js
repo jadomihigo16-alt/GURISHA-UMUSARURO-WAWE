@@ -155,7 +155,8 @@ router.post("/auth/register", async (req, res) => {
     const fullName = String(req.body.full_name || "").trim();
     const phone = String(req.body.phone || "").trim();
     const password = String(req.body.password || "");
-    const role = String(req.body.role || "").trim().toUpperCase();
+    const submittedRole = String(req.body.role || "").trim().toUpperCase();
+    const role = submittedRole === "UMUHUZA" ? "UMUCURUZI" : submittedRole;
 
     const profile = {
       province: String(req.body.province || "").trim(),
@@ -179,18 +180,18 @@ router.post("/auth/register", async (req, res) => {
       });
     }
 
-    if (!["UMUHINZI", "UMWOROZI", "UMUGUZI", "UMUHUZA"].includes(role)) {
+    if (!["UMUHINZI", "UMWOROZI", "UMUGUZI", "UMUCURUZI"].includes(role)) {
       return res.status(400).json({
         success: false,
         message: "UBWOKO BWA KONTI NTIBWEMEWE."
       });
     }
 
-    if (role === "UMUHUZA" &&
+    if (role === "UMUCURUZI" &&
         Object.values(profile).some(value => !value)) {
       return res.status(400).json({
         success: false,
-        message: "UMUHUZA AGOMBA KUZUZA AHO AKORERA."
+        message: "UMUCURUZI AGOMBA KUZUZA AHO AKORERA."
       });
     }
 
@@ -230,7 +231,7 @@ router.post("/auth/register", async (req, res) => {
       farmerId = farmer.rows[0].id;
     }
 
-    if (role === "UMUHUZA") {
+    if (role === "UMUCURUZI") {
       const code = "UMH-" +
         Date.now() + "-" +
         crypto.randomBytes(3).toString("hex").toUpperCase();
@@ -331,10 +332,10 @@ router.post("/auth/register", async (req, res) => {
   // UMUHUZA PROFILE - CURRENT LOGGED-IN USER ONLY
   router.get("/umuhuza/me", authenticate, async (req, res) => {
     try {
-      if (req.user.role !== "UMUHUZA" || !req.user.umuhuza_id) {
+      if (req.user.role !== "UMUCURUZI" || !req.user.umuhuza_id) {
         return res.status(403).json({
           success: false,
-          message: "NTEMEREWE KUBONA UMWIRONDORO WA UMUHUZA."
+          message: "NTEMEREWE KUBONA UMWIRONDORO WA UMUCURUZI."
         });
       }
 
@@ -436,7 +437,8 @@ router.post("/auth/register", async (req, res) => {
       const fullName = String(req.body.full_name || "").trim();
       const phone = String(req.body.phone || "").trim();
       const password = String(req.body.password || "");
-      const role = String(req.body.role || "").trim().toUpperCase();
+      const submittedRole = String(req.body.role || "").trim().toUpperCase();
+    const role = submittedRole === "UMUHUZA" ? "UMUCURUZI" : submittedRole;
 
       if (!fullName || !phone || !password || !role) {
         return res.status(400).json({
@@ -452,7 +454,7 @@ router.post("/auth/register", async (req, res) => {
         });
       }
 
-      if (!["ADMIN", "UMUHINZI", "UMUHUZA", "UMUGUZI"].includes(role)) {
+      if (!["ADMIN", "UMUHINZI", "UMUCURUZI", "UMUGUZI"].includes(role)) {
         return res.status(400).json({
           success: false,
           message: "ROLE SIYO."
@@ -479,11 +481,11 @@ router.post("/auth/register", async (req, res) => {
         village: String(req.body.village || "").trim()
       };
 
-      if (role === "UMUHUZA" &&
+      if (role === "UMUCURUZI" &&
           Object.values(profile).some(value => !value)) {
         return res.status(400).json({
           success: false,
-          message: "UZUZA INTARA, AKARERE, UMURENGE, AKAGARI N'UMUDUGUDU BY'UMUHUZA."
+          message: "UZUZA INTARA, AKARERE, UMURENGE, AKAGARI N'UMUDUGUDU BY'UMUCURUZI."
         });
       }
 
@@ -519,7 +521,7 @@ router.post("/auth/register", async (req, res) => {
         }
       }
 
-      if (role === "UMUHUZA") {
+      if (role === "UMUCURUZI") {
         const code = "UMH-" +
           Date.now() + "-" +
           crypto.randomBytes(3).toString("hex").toUpperCase();
@@ -773,6 +775,8 @@ router.post("/auth/register", async (req, res) => {
 
   return router;
 };
+
+
 
 
 

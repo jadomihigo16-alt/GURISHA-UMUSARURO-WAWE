@@ -1,2 +1,24 @@
+﻿node_modules/
+.env
+.env.*
+!.env.example
+*.backup*
+*_backup*
+deployment-backups/
 
-backend/.env
+# Local backups
+frontend/src/App_before_*.jsx
+frontend/src/App.jsx.before-*
+frontend/src/App.before-*.jsx
+frontend/src/App.jsx.name-backup
+frontend/src/App.jsx.ubworozi-backup
+frontend/src/App.before-*.jsx
+
+backend/server.BEFORE-*.js
+backend/server.before-*.js
+
+# Local inspection scripts
+backend/inspect-users.js
+backend/inspect-users-constraints.js
+backend/link-user-profiles.js
+backend/update-admin-phone.js
