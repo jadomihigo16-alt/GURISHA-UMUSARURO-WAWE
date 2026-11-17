@@ -1,4 +1,4 @@
-import RWANDA_LOCATIONS from "./data/rwanda-locations.json";
+﻿import RWANDA_LOCATIONS from "./data/rwanda-locations.json";
 import { useEffect, useState } from "react";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
@@ -258,7 +258,13 @@ function App() {
         }
       );
 
-      const data = await response.json();
+      const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.message || "GUKORA KONTI BYANZE.");
@@ -311,7 +317,13 @@ function App() {
         })
       });
 
-      const data = await response.json();
+      const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.message || "KWINJIRA BYANZE.");
@@ -489,7 +501,13 @@ useEffect(() => {
         }
       );
 
-      const data = await response.json();
+      const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
       if (data.success) {
         setMyProducts(data.products);
@@ -610,7 +628,13 @@ useEffect(() => {
           }
         );
 
-        const data = await response.json();
+        const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
         if (active && response.ok && data.success) {
           const normalizedOrders = (data.orders || []).map((order) => ({
@@ -693,7 +717,13 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
           `${GIS_BASE}/1/query?where=${where}&outFields=sector&returnGeometry=false&orderByFields=sector&f=json`
         );
         if (!response.ok) throw new Error("Failed to load sectors");
-        const data = await response.json();
+        const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
         setProfileSectors([
           ...new Set(
             (data.features || [])
@@ -725,7 +755,13 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
           `${GIS_BASE}/2/query?where=${where}&outFields=cell&returnGeometry=false&orderByFields=cell&f=json`
         );
         if (!response.ok) throw new Error("Failed to load cells");
-        const data = await response.json();
+        const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
         setProfileCells([
           ...new Set(
             (data.features || [])
@@ -757,7 +793,13 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
           `${GIS_BASE}/3/query?where=${where}&outFields=village&returnGeometry=false&orderByFields=village&f=json`
         );
         if (!response.ok) throw new Error("Failed to load villages");
-        const data = await response.json();
+        const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
         setProfileVillages([
           ...new Set(
             (data.features || [])
@@ -799,7 +841,13 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
           throw new Error("Failed to load sectors");
         }
 
-        const data = await response.json();
+        const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
         const sectors = [
           ...new Set(
@@ -859,7 +907,13 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
           throw new Error("Failed to load cells");
         }
 
-        const data = await response.json();
+        const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
         const cells = [
           ...new Set(
@@ -924,7 +978,13 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
           );
         }
 
-        const data = await response.json();
+        const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
         const villages = [
           ...new Set(
@@ -986,7 +1046,13 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
           );
         }
 
-        const data = await response.json();
+        const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
         const sectors = [
           ...new Set(
@@ -1044,7 +1110,13 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
           );
         }
 
-        const data = await response.json();
+        const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
         const cells = [
           ...new Set(
@@ -1105,7 +1177,13 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
           );
         }
 
-        const data = await response.json();
+        const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
         const villages = [
           ...new Set(
@@ -1222,7 +1300,13 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
       }
     );
 
-    const data = await response.json();
+    const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
     if (!response.ok || !data.success) {
       throw new Error(
@@ -1291,7 +1375,13 @@ const handleMarkProductSold = async (product) => {
       { method: "POST" }
     );
 
-    const data = await response.json();
+    const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
     if (!response.ok || !data.success) {
       throw new Error(data.message || "Ntibyashobotse.");
@@ -1336,7 +1426,13 @@ const handleOfferPrice = async (product) => {
       }
     );
 
-    const data = await response.json();
+    const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
     if (!response.ok || !data.success) {
       throw new Error(data.message || "Ntibyashobotse.");
@@ -1374,7 +1470,13 @@ const handleOfferResponse = async (product, responseChoice) => {
       }
     );
 
-    const data = await response.json();
+    const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
     if (!response.ok || !data.success) {
       throw new Error(data.message || "Ntibyashobotse.");
@@ -1423,7 +1525,13 @@ const handleVerifyProduct = async (productId) => {
         }
       );
 
-      const data = await response.json();
+      const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.message || "KUGENZURA BYANZE.");
@@ -1491,7 +1599,13 @@ const handleVerifyProduct = async (productId) => {
         }
       );
 
-      const data = await response.json();
+      const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.message || "KWEMEZA UMUSARURO BYANZE.");
@@ -1622,7 +1736,13 @@ const handleVerifyProduct = async (productId) => {
       }
     );
 
-    const data = await response.json();
+    const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
     if (!response.ok || !data.success) {
       throw new Error(
@@ -1750,7 +1870,13 @@ const handleApproveOrder = async (orderId) => {
       }
     );
 
-    const data = await response.json();
+    const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
     if (!response.ok) {
       throw new Error(data.message || "Kubika status byanze.");
@@ -1822,7 +1948,13 @@ const handleApproveOrder = async (orderId) => {
       }
     );
 
-    const data = await response.json();
+    const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
     if (!response.ok) {
       throw new Error(data.message || "Kubika status byanze.");
@@ -2376,7 +2508,13 @@ const handleApproveOrder = async (orderId) => {
       }
     );
 
-    const data = await response.json();
+    const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
     if (!response.ok) {
       throw new Error(
@@ -2432,7 +2570,13 @@ const handleApproveOrder = async (orderId) => {
       }
     );
 
-    const data = await response.json();
+    const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
     if (!response.ok) {
       throw new Error(
@@ -2488,7 +2632,13 @@ const handleApproveOrder = async (orderId) => {
         }
       );
 
-      const data = await response.json();
+      const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
       if (!response.ok) {
         throw new Error(
@@ -2544,7 +2694,13 @@ const handleApproveOrder = async (orderId) => {
         }
       );
 
-      const data = await response.json();
+      const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
       if (!response.ok) {
         throw new Error(
@@ -2947,7 +3103,13 @@ const pendingProducts =
         "https://gurisha-umusaruro-wawe.onrender.com/api/intermediary-profile"
       );
 
-      const data = await response.json();
+      const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.message || "KUBONA UMWIRONDORO BYANZE.");
@@ -3012,7 +3174,13 @@ const pendingProducts =
         }
       );
 
-      const data = await response.json();
+      const rawResponse = await response.text();
+      let data;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        throw new Error("SERVER YASUBIJE HTML AHO KUGARURA JSON. REBA API URL NA RENDER LOGS.");
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.message || "KUBIKA UMWIRONDORO BYANZE.");
@@ -4326,7 +4494,7 @@ const pendingProducts =
                 cursor: "pointer"
               }}
             >
-              Â AHABANZA
+              Ã‚Â AHABANZA
             </button>
           </div>
         </main>
@@ -6226,6 +6394,7 @@ const pendingProducts =
 }
 
 export default App;
+
 
 
 
