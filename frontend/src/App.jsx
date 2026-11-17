@@ -1,4 +1,4 @@
-﻿import RWANDA_LOCATIONS from "./data/rwanda-locations.json";
+import RWANDA_LOCATIONS from "./data/rwanda-locations.json";
 import { useEffect, useState } from "react";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
@@ -240,7 +240,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://localhost:5001/api/auth/register",
+        "https://gurisha-umusaruro-wawe.onrender.com/api/auth/register",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -302,7 +302,7 @@ function App() {
     setLoginLoading(true);
 
     try {
-      const response = await fetch("http://localhost:5001/api/auth/login", {
+      const response = await fetch("https://gurisha-umusaruro-wawe.onrender.com/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -337,7 +337,7 @@ function App() {
 
         try {
           const ordersResponse = await fetch(
-            `http://localhost:5001/api/orders/buyer/${encodeURIComponent(buyerPhone)}`
+            `https://gurisha-umusaruro-wawe.onrender.com/api/orders/buyer/${encodeURIComponent(buyerPhone)}`
           );
 
           const ordersData = await ordersResponse.json();
@@ -369,7 +369,7 @@ function App() {
         setPage("buyer");
       } else if (data.user.role === "UMUCURUZI") {
         const profileResponse = await fetch(
-          "http://localhost:5001/api/umucuruzi/me",
+          "https://gurisha-umusaruro-wawe.onrender.com/api/umucuruzi/me",
           { headers: { Authorization: `Bearer ${data.token}` } }
         );
         const profileData = await profileResponse.json();
@@ -481,7 +481,7 @@ useEffect(() => {
       }
 
       const response = await fetch(
-        `http://localhost:5001${endpoint}`,
+        `https://gurisha-umusaruro-wawe.onrender.com${endpoint}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -602,7 +602,7 @@ useEffect(() => {
         if (!token) return;
 
         const response = await fetch(
-          "http://localhost:5001/api/orders",
+          "https://gurisha-umusaruro-wawe.onrender.com/api/orders",
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -1211,7 +1211,7 @@ const [buyerHistoryPhone, setBuyerHistoryPhone] = useState("");
     };
 
     const response = await fetch(
-      "http://localhost:5001/api/products",
+      "https://gurisha-umusaruro-wawe.onrender.com/api/products",
       {
         method: "POST",
         headers: {
@@ -1287,7 +1287,7 @@ const handleMarkProductSold = async (product) => {
 
   try {
     const response = await fetch(
-      `http://localhost:5001/api/products/${product.id}/sold`,
+      `https://gurisha-umusaruro-wawe.onrender.com/api/products/${product.id}/sold`,
       { method: "POST" }
     );
 
@@ -1328,7 +1328,7 @@ const handleOfferPrice = async (product) => {
 
   try {
     const response = await fetch(
-      `http://localhost:5001/api/products/${product.id}/offer`,
+      `https://gurisha-umusaruro-wawe.onrender.com/api/products/${product.id}/offer`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1366,7 +1366,7 @@ const handleOfferResponse = async (product, responseChoice) => {
 
   try {
     const response = await fetch(
-      `http://localhost:5001/api/products/${product.id}/offer-response`,
+      `https://gurisha-umusaruro-wawe.onrender.com/api/products/${product.id}/offer-response`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1411,7 +1411,7 @@ const handleVerifyProduct = async (productId) => {
 
     try {
       const response = await fetch(
-        `http://localhost:5001/api/products/${productId}/verify`,
+        `https://gurisha-umusaruro-wawe.onrender.com/api/products/${productId}/verify`,
         {
           method: "POST",
           headers: {
@@ -1483,7 +1483,7 @@ const handleVerifyProduct = async (productId) => {
 
     try {
       const response = await fetch(
-        `http://localhost:5001/api/products/${productId}/approve`,
+        `https://gurisha-umusaruro-wawe.onrender.com/api/products/${productId}/approve`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1612,7 +1612,7 @@ const handleVerifyProduct = async (productId) => {
 
   try {
     const response = await fetch(
-      "http://localhost:5001/api/orders",
+      "https://gurisha-umusaruro-wawe.onrender.com/api/orders",
       {
         method: "POST",
         headers: {
@@ -1737,7 +1737,7 @@ const handleVerifyProduct = async (productId) => {
 const handleApproveOrder = async (orderId) => {
   try {
     const response = await fetch(
-      `http://localhost:5001/api/orders/${orderId}/status`,
+      `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
       {
         method: "PATCH",
         headers: {
@@ -1771,7 +1771,7 @@ const handleApproveOrder = async (orderId) => {
     // KUVUGURURA UMUSARURO UVE MURI DATABASE
     try {
       const productsResponse = await fetch(
-        "http://localhost:5001/api/products"
+        "https://gurisha-umusaruro-wawe.onrender.com/api/products"
       );
 
       const productsData = await productsResponse.json();
@@ -1809,7 +1809,7 @@ const handleApproveOrder = async (orderId) => {
 
   try {
     const response = await fetch(
-      `http://localhost:5001/api/orders/${orderId}/status`,
+      `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
       {
         method: "PATCH",
         headers: {
@@ -2363,7 +2363,7 @@ const handleApproveOrder = async (orderId) => {
   const handleStartDelivery = async (orderId) => {
   try {
     const response = await fetch(
-      `http://localhost:5001/api/orders/${orderId}/status`,
+      `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
       {
         method: "PATCH",
         headers: {
@@ -2419,7 +2419,7 @@ const handleApproveOrder = async (orderId) => {
   const handleSendDelivery = async (orderId) => {
   try {
     const response = await fetch(
-      `http://localhost:5001/api/orders/${orderId}/status`,
+      `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
       {
         method: "PATCH",
         headers: {
@@ -2475,7 +2475,7 @@ const handleApproveOrder = async (orderId) => {
   const handleDeliveryArrived = async (orderId) => {
     try {
       const response = await fetch(
-        `http://localhost:5001/api/orders/${orderId}/status`,
+        `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
         {
           method: "PATCH",
           headers: {
@@ -2531,7 +2531,7 @@ const handleApproveOrder = async (orderId) => {
     const handleBuyerReceivedProduct = async (orderId) => {
     try {
       const response = await fetch(
-        `http://localhost:5001/api/orders/${orderId}/status`,
+        `https://gurisha-umusaruro-wawe.onrender.com/api/orders/${orderId}/status`,
         {
           method: "PATCH",
           headers: {
@@ -2944,7 +2944,7 @@ const pendingProducts =
   const handleOpenAgent = async () => {
     try {
       const response = await fetch(
-        "http://localhost:5001/api/intermediary-profile"
+        "https://gurisha-umusaruro-wawe.onrender.com/api/intermediary-profile"
       );
 
       const data = await response.json();
@@ -3004,7 +3004,7 @@ const pendingProducts =
 
     try {
       const response = await fetch(
-        "http://localhost:5001/api/intermediary-profile",
+        "https://gurisha-umusaruro-wawe.onrender.com/api/intermediary-profile",
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
